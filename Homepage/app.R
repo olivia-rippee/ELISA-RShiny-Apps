@@ -30,18 +30,6 @@ ui <- fluidPage(
           href = "https://oliviarippee-elisa-parallelism-ruggedness.share.connect.posit.cloud/",
           target = "_blank",
           class = "btn btn-primary w-100"))),
-  
-  
-#    card(
-#      min_height = 250,
-#      card_header("Generate Blank ELISA CVB Files"),
-#      p("Create blank Dilution, Layout, OD, PlateInfo, and SerialTesting csv files."),
-#      card_footer(
-#        tags$a(
-#          "Launch App",
-#          href = "https://oliviarippee-cvb-elisa-files.share.connect.posit.cloud/",
-#          target = "_blank",
-#          class = "btn btn-primary w-100"))),
 
     card(
       min_height = 250,
@@ -64,6 +52,17 @@ ui <- fluidPage(
           href = "https://oliviarippee-elisa-parallelism-ruggedness.share.connect.posit.cloud/",
           target = "_blank",
           class = "btn btn-primary w-100"))),
+    
+    #    card(
+    #      min_height = 250,
+    #      card_header("Generate Blank ELISA CVB Files"),
+    #      p("Create blank Dilution, Layout, OD, PlateInfo, and SerialTesting csv files."),
+    #      card_footer(
+    #        tags$a(
+    #          "Launch App",
+    #          href = "https://oliviarippee-cvb-elisa-files.share.connect.posit.cloud/",
+    #          target = "_blank",
+    #          class = "btn btn-primary w-100"))),
 
     card(
       min_height = 250,
