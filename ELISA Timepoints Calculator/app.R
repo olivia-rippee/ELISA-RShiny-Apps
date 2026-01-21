@@ -20,65 +20,51 @@ ui <- fluidPage(
             tags$br(),
             h4(strong(step)),
             fluidRow(
-              
-              # Hours
-              # ------
               column(4, numericInput(paste0(step, "_hr"), "Hr:",
-                  value = ifelse(step == "CAB", 3,
-                          ifelse(step == "Block", 2,
-                          ifelse(step == "Agn", 18,
-                          ifelse(step == "DAB", 3,
-                          ifelse(step == "Conj", 0,
-                          ifelse(step == "Sub", 0, 0)))))),
-                  min = 0)),
-              
-              # Minutes
-              # --------
+                                     value = ifelse(step == "CAB", 3,
+                                                    ifelse(step == "Block", 2,
+                                                           ifelse(step == "Agn", 18,
+                                                                  ifelse(step == "DAB", 3,
+                                                                         ifelse(step == "Conj", 0,
+                                                                                ifelse(step == "Sub", 0, 0)))))),
+                                     min = 0)),
               column(4, numericInput(paste0(step, "_min"), "Min:",
-                  value = ifelse(step == "Conj", 45,
-                          ifelse(step == "Sub", 10,
-                          ifelse(step == "Stop/Read", 5, 0))),
-                  min = 0, max = 59)),
-              
-              # Transfer time (not needed for Sub, Stop/Read)
-              # ---------------------------------------------------
+                                     value = ifelse(step == "Conj", 45,
+                                                    ifelse(step == "Sub", 10,
+                                                           ifelse(step == "Stop/Read", 5, 0))),
+                                     min = 0, max = 59)),
               if (!(step %in% c("Sub", "Stop/Read")))
                 column(4, numericInput(paste0(step, "_transfer"), "Transfer (min):",
-                      value = if (step == "Agn") 10 else 0, min = 0))), tags$hr() )})),
+                                       value = if (step == "Agn") 10 else 0, min = 0))),
+            tags$hr())})),
       
-      actionButton("calc", "Calculate Timings", class="btn-primary")),
+      actionButton("calc", "Calculate Timings", class = "btn-primary"),
+      actionButton("clear", "Clear Table", class = "btn-secondary"),
+      actionButton("refresh", "Refresh Page", class = "btn-secondary")),
     
     mainPanel(
       h3("Step Schedule"),
       tableOutput("schedule"))))
 
-
 server <- function(input, output, session) {
+  schedule_data <- reactiveVal(NULL)
+  
   observeEvent(input$calc, {
-    
-    # Combine date and time
-    # ----------------------
     start_datetime <- as.POSIXct(
       paste(input$start_day, input$start_time),
       format = "%Y-%m-%d %H:%M",
       tz = Sys.timezone())
     
-    # Step durations
-    # ---------------
     steps <- c("CAB", "Block", "Agn", "DAB", "Conj", "Sub", "Stop/Read")
     
     durations_min <- sapply(steps,
-      function(s) input[[paste0(s, "_hr")]]*60 + input[[paste0(s, "_min")]])
+                            function(s) input[[paste0(s, "_hr")]]*60 + input[[paste0(s, "_min")]])
     
-    # Transfer times
-    # ---------------
     transfers_min <- sapply(steps,
-      function(s) {
-        transfer_val <- input[[paste0(s, "_transfer")]]
-        if (is.null(transfer_val)) 0 else transfer_val})
+                            function(s) {
+                              transfer_val <- input[[paste0(s, "_transfer")]]
+                              if (is.null(transfer_val)) 0 else transfer_val})
     
-    # Build schedule table
-    # ---------------------
     df <- data.frame(Step = character(),
                      Duration = character(),
                      Start_Time = character(),
@@ -102,14 +88,49 @@ server <- function(input, output, session) {
           End_Time = format(step_end, "%A, %d %b %Y @ %H:%M"),
           stringsAsFactors = FALSE))
       
-      # Move time forward
-      # ------------------
       current_time <- step_end + minutes(transfers_min[i])}
     
-    output$schedule <- renderTable(df,
-      bordered = TRUE,
-      striped = TRUE,
-      hover = TRUE,
-      sanitize.text.function = function(x) x)})}
+    schedule_data(df)})
+  
+  observeEvent(input$clear, {
+    schedule_data(NULL)})
+  
+  observeEvent(input$refresh, {
+    updateDateInput(session, "start_day", value = Sys.Date())
+    updateTextInput(session, "start_time", value = "08:00")
+    
+    steps <- c("CAB", "Block", "Agn", "DAB", "Conj", "Sub", "Stop/Read")
+    
+    for (step in steps) {
+      default_hr <- switch(step,
+                           "CAB" = 3,
+                           "Block" = 2,
+                           "Agn" = 18,
+                           "DAB" = 3,
+                           "Conj" = 0,
+                           "Sub" = 0,
+                           "Stop/Read" = 0)
+      updateNumericInput(session, paste0(step, "_hr"), value = default_hr)
+      
+      default_min <- switch(step,
+                            "Conj" = 45,
+                            "Sub" = 10,
+                            "Stop/Read" = 5,
+                            0)
+      updateNumericInput(session, paste0(step, "_min"), value = default_min)
+      
+      if (!(step %in% c("Sub", "Stop/Read"))) {
+        default_transfer <- ifelse(step == "Agn", 10, 0)
+        updateNumericInput(session, paste0(step, "_transfer"), value = default_transfer)}}
+    
+    schedule_data(NULL)})
+  
+  output$schedule <- renderTable({
+    schedule_data()},
+  bordered = TRUE,
+  striped = TRUE,
+  hover = TRUE,
+  sanitize.text.function = function(x) x)}
+
 
 shinyApp(ui, server)
