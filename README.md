@@ -7,7 +7,7 @@ Homepage: [https://oliviarippee-home.share.connect.posit.cloud/](https://oliviar
 
 - **Create CVB ELISA Files**: Create blank dilution, layout, OD, plate info, and serial testing CSV files for ELISA data collection and submission to the CVB.
 
-- **ELISA Data Analysis Parallelism and Ruggedness**: Generate summary statistics on your ELISA data for parallelism and ruggedness assessment.
+- **ELISA Analysis - Parallelism & Ruggedness**: Generate summary statistics on your ELISA data for parallelism and ruggedness assessment.
 
 - **ELISA edata QA Scan**: Check your ELISA edata for consistent plate labeling and matching serials between files prior to submission to CVB.
 
