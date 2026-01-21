@@ -27,7 +27,7 @@ ui <- fluidPage(
       card_footer(
         tags$a(
           "Launch App",
-          href = "https://oliviarippee-elisa-parallelism-ruggedness.share.connect.posit.cloud/",
+          href = "https://oliviarippee-elisa-timepoints-calculator.share.connect.posit.cloud",
           target = "_blank",
           class = "btn btn-primary w-100"))),
 
