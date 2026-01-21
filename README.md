@@ -1,6 +1,8 @@
 # ELISA-RShiny-Apps
 RShiny apps I created for Kemin to automate ELISA assay planning, data quality assurance, and data analysis.
 
+Homepage: [https://oliviarippee-home.share.connect.posit.cloud/](https://oliviarippee-home.share.connect.posit.cloud/)
+
 - **ELISA Data Analysis Parallelism and Ruggedness**: Generate summary statistics on your ELISA data for parallelism and ruggedness assessment.
 
 - **ELISA edata QA Scan**: Check your ELISA edata for consistent plate labeling and matching serials between files prior to submission to CVB.
