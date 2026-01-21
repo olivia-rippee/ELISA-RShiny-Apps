@@ -4,7 +4,7 @@ library(bslib)
 ui <- fluidPage(
   theme = bs_theme(
     version = 5,
-    bootswatch = "flatly"),
+    bootswatch = "lumen"),
   
   tags$head(
     tags$style(HTML("
@@ -109,3 +109,4 @@ ui <- fluidPage(
 server <- function(input, output, session) {}
 
 shinyApp(ui, server)
+
