@@ -46,7 +46,7 @@ ui <- fluidPage(
                 column(4, numericInput(paste0(step, "_transfer"), "Transfer (min):",
                       value = if (step == "Agn") 10 else 0, min = 0))), tags$hr() )})),
       
-      actionButton("calc", "Calculate Timings")),
+      actionButton("calc", "Calculate Timings", class="btn-primary")),
     
     mainPanel(
       h3("Step Schedule"),
