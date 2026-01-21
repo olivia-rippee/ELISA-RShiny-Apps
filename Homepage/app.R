@@ -8,14 +8,14 @@ ui <- fluidPage(
   
   tags$head(
     tags$style(HTML("
-    .card-header {
-      font-weight: 700;}"))),
+    h2 {font-weight: 700;}
+    .card-header {font-weight: 700;}"))),
   
-  titlePanel("Kemin R Shiny App Homepage"),
-  br(),
+  titlePanel("ELISA R Shiny App Homepage"),
   
-  h3("RShiny Apps"),
-  p("Created by OR"),
+  hr(style = "border-top: 3px solid #000000;"),
+  h3(strong("RShiny Apps")),
+  p(em("Created by OR")),
   
   layout_columns(
     col_widths = c(4, 4, 4),
@@ -76,7 +76,7 @@ ui <- fluidPage(
           class = "btn btn-primary w-100")))),
 
     br(),
-    h3("Useful External Websites"),
+    h3(strong("Useful External Websites")),
     br(),
 
     layout_columns(
@@ -109,4 +109,3 @@ ui <- fluidPage(
 server <- function(input, output, session) {}
 
 shinyApp(ui, server)
-
