@@ -1,0 +1,743 @@
+---
+title: "ELISA Analysis"
+subtitle: "Parallelism and Ruggedness"
+date: "`r Sys.Date()`"
+output:
+  word_document:
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(flextable)
+library(officer)
+```
+
+```{r data}
+
+serial_testing <- read.csv("C:/Users/ORippee/OneDrive - Kemin Industries/R&D - R&D ELISA/HRA Equine/9way/EHV1.4/EHV Feasibility - Aug25/edata/SerialTesting.csv", stringsAsFactors = FALSE)
+
+# ---------------------------
+# Add shorthand serial names
+# ---------------------------
+serial_testing <- serial_testing %>% 
+  mutate(serial = case_when(
+            grepl("-120", serialID, ignore.case = TRUE) ~ "120",
+            grepl("SERA", serialID, ignore.case = TRUE) ~ "SerA",
+            grepl("SERB", serialID, ignore.case = TRUE) ~ "SerB",
+            grepl("PC",   serialID, ignore.case = TRUE) ~ "PC",
+            grepl("NC",   serialID, ignore.case = TRUE) ~ "NC",
+            grepl("MR",   serialID, ignore.case = TRUE) ~ "MR",
+            TRUE ~ NA_character_),
+        serial = factor(serial, levels = c("120", "SerA", "SerB", "PC", "NC", "MR")))
+
+# ------------------------------------
+# Filter and sort serial_testing data
+# ------------------------------------
+
+# Parallelism
+parallelism_plates <- serial_testing[grepl("Parallelism", serial_testing$plateID, ignore.case = TRUE), ]
+
+parallelism_plates <- parallelism_plates %>%
+  filter(serial %in% c("SerA", "SerB", "PC")) %>%
+  arrange(serialID)
+
+parallelism_serials <- unique(parallelism_plates$serial)
+
+
+# Ruggedness
+ruggedness_plates <- serial_testing[grepl("min|max", serial_testing$plateID, ignore.case = TRUE), ]
+
+ruggedness_plates <- ruggedness_plates %>%
+  filter(serial %in% c("SerB", "120", "PC")) %>%
+  arrange(serialID)
+
+ruggedness_serials <- unique(ruggedness_plates$serial)
+
+# ---------------------------------------------------------
+# Detect starting dilutions and add to serial testing data
+# ---------------------------------------------------------
+dilution <- read.csv("C:/Users/ORippee/OneDrive - Kemin Industries/R&D - R&D ELISA/HRA Equine/9way/EHV1.4/EHV Feasibility - Aug25/edata/Dilution.csv", 
+                     header = TRUE, stringsAsFactors = FALSE)
+
+layout <- read.csv("C:/Users/ORippee/OneDrive - Kemin Industries/R&D - R&D ELISA/HRA Equine/9way/EHV1.4/EHV Feasibility - Aug25/edata/Layout.csv", 
+                     header = TRUE, stringsAsFactors = FALSE)
+
+dilution <- dilution %>%
+  group_by(plateID) %>%
+  mutate(Row = row_number()) %>%
+  ungroup() %>%
+  mutate(RowLetter = LETTERS[Row])
+
+layout <- layout %>%
+  group_by(plateID) %>%
+  mutate(Row = row_number()) %>%
+  ungroup() %>%
+  mutate(RowLetter = LETTERS[Row])
+
+dilution_long <- dilution %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = "Column",
+    values_to = "Dilution") %>%
+  mutate(Column = as.integer(sub("X", "", Column)))
+
+layout_long <- layout %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = "Column",
+    values_to = "serialID") %>%
+  mutate(Column = as.integer(sub("X", "", Column)))
+
+well_mapping <- layout_long %>%
+  left_join(dilution_long, by = c("plateID", "RowLetter", "Column")) %>%
+  select(plateID, RowLetter, Column, serialID, Dilution) %>%
+  mutate(serial = case_when(
+            grepl("-120", serialID, ignore.case = TRUE) ~ "120",
+            grepl("SERA", serialID, ignore.case = TRUE) ~ "SerA",
+            grepl("SERB", serialID, ignore.case = TRUE) ~ "SerB",
+            grepl("PC",   serialID, ignore.case = TRUE) ~ "PC",
+            grepl("NC",   serialID, ignore.case = TRUE) ~ "NC",
+            grepl("MR",   serialID, ignore.case = TRUE) ~ "MR",
+            TRUE ~ NA_character_),
+        serial = factor(serial, levels = c("120", "SerA", "SerB", "PC", "NC", "MR")))
+
+# Parallelism
+# -------------
+filtered_parallelism_mapping <- well_mapping %>%
+  filter(serial %in% c("SerA", "SerB", "PC"), ignore.case = TRUE) %>%
+  group_by(plateID, serialID) %>%
+  slice_min(Dilution, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+parallelism_mapping <- filtered_parallelism_mapping[grepl("Parallelism", filtered_parallelism_mapping$plateID, ignore.case = TRUE), ]
+
+parallelism_data <- parallelism_plates %>%
+  left_join(filtered_parallelism_mapping, by = c("serialID", "serial", "plateID"))
+
+parallelism_data <- parallelism_data %>%
+  mutate(dilution_group = paste0(serial, " ", Dilution))
+
+# Ruggedness
+# -------------
+filtered_ruggedness_mapping <- well_mapping %>%
+  filter(serial %in% c("120", "SerB", "PC"), ignore.case = TRUE) %>%
+  group_by(plateID, serialID) %>%
+  slice_min(Dilution, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+ruggedness_mapping <- filtered_ruggedness_mapping[grepl("max|min|ruggedness", filtered_ruggedness_mapping$plateID, ignore.case = TRUE), ]
+
+ruggedness_data <- ruggedness_plates %>%
+  left_join(filtered_ruggedness_mapping, by = c("serialID", "serial", "plateID"))
+
+ruggedness_data <- ruggedness_data %>%
+  mutate(dilution_group = paste0(serial, " ", Dilution))
+
+ruggedness_min_data <- ruggedness_data %>% filter(grepl("min", plateID, ignore.case = TRUE))
+ruggedness_max_data <- ruggedness_data %>% filter(grepl("max", plateID, ignore.case = TRUE))
+
+```
+
+```{r CI helper functions}
+
+cv <- function(x) sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100
+
+margin_of_error <- function(x, conf = 0.90) {
+n <- sum(!is.na(x))
+if (n <= 1) return(NA)
+tcrit <- qt((1 + conf) / 2, df = n - 1)
+tcrit * sd(x, na.rm = TRUE) / sqrt(n)}
+
+conf_level <- 0.90
+z_score <- qnorm(1 - (1 - conf_level)/2)
+
+```
+
+<br>
+
+# Parallelism
+
+## Parallelism: All Plate IDs
+
+<br>
+
+```{r parallelism plate IDs}
+
+parallelism_plate_table <- parallelism_data %>%
+  distinct(plateID) %>%
+  arrange(plateID) %>%
+  mutate(index = ceiling(row_number() / 2),
+         col = ifelse(row_number() %% 2 == 1, "Column1", "Column2")) %>%
+  pivot_wider(names_from = col, values_from = plateID) %>%
+  select(Column1, Column2)
+
+parallelism_plate_table %>%
+  flextable() %>%
+  set_header_labels(Column1 = "Plate IDs", Column2 = "") %>%
+  fontsize(size = 10) %>%
+  autofit()
+
+```
+
+\pagebreak
+
+## Parallelism: All Starting Dilutions
+
+<br>
+
+```{r parallelism over all}
+
+parallelism_all_dilutions <- parallelism_data %>%
+  filter(serial %in% parallelism_serials) %>%
+  group_by(serial) %>%
+  summarise(
+    AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
+    StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
+    CV_ParmA = sd(ParmA_ratio, na.rm = TRUE) / mean(ParmA_ratio, na.rm = TRUE) * 100,
+    AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
+    StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
+    CV_ParmB = sd(ParmB_ratio, na.rm = TRUE) / mean(ParmB_ratio, na.rm = TRUE) * 100,
+    AvgRP   = mean(rp, na.rm = TRUE),
+    StdevRP = sd(rp, na.rm = TRUE),
+    CV_RP   = sd(rp, na.rm = TRUE) / mean(rp, na.rm = TRUE) * 100,
+    SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
+    MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+    Lower_ParmA = AvgParmA - MarginError_ParmA,
+    Upper_ParmA = AvgParmA + MarginError_ParmA,
+    MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+    Lower_ParmB = AvgParmB - MarginError_ParmB,
+    Upper_ParmB = AvgParmB + MarginError_ParmB,
+    .groups = "drop") %>%
+  
+  slice(match(parallelism_serials, serial)) %>%
+  
+  pivot_longer(cols = -serial, names_to = "Metric", values_to = "Value") %>%
+  pivot_wider(names_from = serial, values_from = Value) %>%
+  
+  mutate(across(-Metric, ~ case_when(
+    Metric %in% c("Lower_ParmA", "Upper_ParmA", "Lower_ParmB", "Upper_ParmB") ~
+      formatC(.x, format = "f", digits = 1),
+    Metric %in% c("CV_ParmA", "CV_ParmB", "CV_RP") ~
+      paste0(formatC(.x, format = "f", digits = 2), "%"),
+    Metric == "SampleSize" ~ paste0(formatC(.x, format = "f", digits = 0)),
+    TRUE ~ formatC(.x, format = "f", digits = 3)))) %>%
+
+  bind_rows(tibble(Metric = "CI", 
+                   !!!setNames(rep(paste0(conf_level * 100, "%"), length(parallelism_serials)), parallelism_serials))) %>%
+  
+  arrange(factor(Metric, levels = c(
+    "AvgParmA", "StdevParmA", "CV_ParmA",
+    "AvgParmB", "StdevParmB", "CV_ParmB",
+    "AvgRP", "StdevRP", "CV_RP", "SampleSize", "CI",
+    "MarginError_ParmA", "Lower_ParmA", "Upper_ParmA",
+    "MarginError_ParmB", "Lower_ParmB", "Upper_ParmB")))
+
+parallelism_all_dilutions %>%
+  flextable() %>%
+  fontsize(size = 10) %>%
+  autofit() %>%
+  hline(i = which(parallelism_all_dilutions$Metric %in% c("CV_ParmA", "CV_ParmB", "CV_RP", "CI", "Upper_ParmA")),
+    border = fp_border(color = "gray", width = 1))
+
+```
+
+\pagebreak
+
+## Parallelism: Combined Serial A + Serial B
+
+<br>
+
+```{r parallelism SerA+SerB}
+
+serA_B <- parallelism_data %>% filter(serial %in% c("SerA", "SerB"))
+
+detected_dilutions <- serA_B %>%
+  distinct(Dilution) %>%
+  arrange(Dilution) %>%
+  pull(Dilution)
+
+summarize_serA_B <- function(df) {
+  SampleSize <- sum(!is.na(df$ParmA_ratio) & !is.na(df$ParmB_ratio))
+  AvgParmA <- mean(df$ParmA_ratio, na.rm = TRUE)
+  StdevParmA <- sd(df$ParmA_ratio, na.rm = TRUE)
+  CV_ParmA <- StdevParmA / AvgParmA * 100
+  AvgParmB <- mean(df$ParmB_ratio, na.rm = TRUE)
+  StdevParmB <- sd(df$ParmB_ratio, na.rm = TRUE)
+  CV_ParmB <- StdevParmB / AvgParmB * 100
+  MarginError_ParmA <- z_score * StdevParmA / sqrt(SampleSize)
+  Lower_ParmA <- AvgParmA - MarginError_ParmA
+  Upper_ParmA <- AvgParmA + MarginError_ParmA
+  MarginError_ParmB <- z_score * StdevParmB / sqrt(SampleSize)
+  Lower_ParmB <- AvgParmB - MarginError_ParmB
+  Upper_ParmB <- AvgParmB + MarginError_ParmB
+  
+  tibble(AvgParmA, StdevParmA, CV_ParmA,
+    AvgParmB, StdevParmB, CV_ParmB, SampleSize,
+    MarginError_ParmA, Lower_ParmA, Upper_ParmA,
+    MarginError_ParmB, Lower_ParmB, Upper_ParmB)}
+
+parallelism_list <- c(list("SerA+SerB" = summarize_serA_B(serA_B)),
+  setNames(lapply(detected_dilutions, function(d)
+      summarize_serA_B(filter(serA_B, Dilution == d))),
+    paste0("SerA+SerB ", detected_dilutions)))
+
+parallelism_serA_B <- bind_cols(
+  Metric = names(parallelism_list[[1]]),
+  lapply(parallelism_list, unlist))
+
+parallelism_serA_B <- parallelism_serA_B %>%
+  mutate(across(-Metric, ~ case_when(
+    Metric %in% c("Lower_ParmA", "Upper_ParmA", "Lower_ParmB", "Upper_ParmB") ~
+      formatC(.x, format = "f", digits = 1),
+    Metric %in% c("CV_ParmA", "CV_ParmB") ~
+      paste0(formatC(.x, format = "f", digits = 2), "%"),
+    Metric == "SampleSize" ~ formatC(.x, format = "f", digits = 0),
+    TRUE ~ formatC(.x, format = "f", digits = 3)))) %>%
+  bind_rows(tibble(Metric = "CI",
+      !!!setNames(rep(paste0(conf_level * 100, "%"), ncol(.) - 1),
+                  names(.)[-1]))) %>%
+  arrange(factor(Metric, levels = c(
+    "AvgParmA", "StdevParmA", "CV_ParmA",
+    "AvgParmB", "StdevParmB", "CV_ParmB",
+    "SampleSize", "CI",
+    "MarginError_ParmA", "Lower_ParmA", "Upper_ParmA",
+    "MarginError_ParmB", "Lower_ParmB", "Upper_ParmB")))
+
+parallelism_serA_B %>%
+  flextable() %>%
+  fontsize(size = 10) %>%
+  autofit()
+
+```
+
+\pagebreak
+
+## Parallelism: By Serial and Starting Dilution
+
+<br>
+
+```{r parallelism by serial and dilution}
+
+summarize_serial_with_RP <- function(df) {
+  SampleSize <- sum(!is.na(df$ParmA_ratio) & !is.na(df$ParmB_ratio))
+  
+  AvgParmA <- ifelse(SampleSize > 0, mean(df$ParmA_ratio, na.rm = TRUE), NA)
+  StdevParmA <- ifelse(SampleSize > 1, sd(df$ParmA_ratio, na.rm = TRUE), NA)
+  CV_ParmA <- ifelse(!is.na(AvgParmA) & AvgParmA != 0, StdevParmA / AvgParmA * 100, NA)
+  
+  AvgParmB <- ifelse(SampleSize > 0, mean(df$ParmB_ratio, na.rm = TRUE), NA)
+  StdevParmB <- ifelse(SampleSize > 1, sd(df$ParmB_ratio, na.rm = TRUE), NA)
+  CV_ParmB <- ifelse(!is.na(AvgParmB) & AvgParmB != 0, StdevParmB / AvgParmB * 100, NA)
+  
+  AvgRP <- ifelse(SampleSize > 0, mean(df$rp, na.rm = TRUE), NA)
+  StdevRP <- ifelse(SampleSize > 1, sd(df$rp, na.rm = TRUE), NA)
+  CV_RP <- ifelse(!is.na(AvgRP) & AvgRP != 0, StdevRP / AvgRP * 100, NA)
+  
+  MarginError_ParmA <- ifelse(!is.na(StdevParmA), z_score * StdevParmA / sqrt(SampleSize), NA)
+  Lower_ParmA <- AvgParmA - MarginError_ParmA
+  Upper_ParmA <- AvgParmA + MarginError_ParmA
+  
+  MarginError_ParmB <- ifelse(!is.na(StdevParmB), z_score * StdevParmB / sqrt(SampleSize), NA)
+  Lower_ParmB <- AvgParmB - MarginError_ParmB
+  Upper_ParmB <- AvgParmB + MarginError_ParmB
+  
+  tibble(AvgParmA, StdevParmA, CV_ParmA,
+    AvgParmB, StdevParmB, CV_ParmB,
+    AvgRP, StdevRP, CV_RP, SampleSize,
+    MarginError_ParmA, Lower_ParmA, Upper_ParmA,
+    MarginError_ParmB, Lower_ParmB, Upper_ParmB)}
+
+parallelism_by_serial_dilution <- parallelism_data %>%
+  filter(serial %in% c("SerA", "SerB")) %>%
+  group_by(serial, Dilution) %>%
+  group_modify(~ summarize_serial_with_RP(.x)) %>%
+  ungroup() %>%
+  pivot_longer(-c(serial, Dilution), names_to = "Metric", values_to = "Value") %>%
+  unite(Group, serial, Dilution, sep = " ") %>%
+  pivot_wider(names_from = Group, values_from = Value)
+
+parallelism_by_serial_dilution <- parallelism_by_serial_dilution %>%
+  mutate(across(-Metric, ~ case_when(
+    Metric %in% c("Lower_ParmA", "Upper_ParmA", "Lower_ParmB", "Upper_ParmB") ~
+      formatC(.x, format = "f", digits = 1),
+    Metric %in% c("CV_ParmA", "CV_ParmB", "CV_RP") ~
+      ifelse(!is.na(.x), paste0(formatC(.x, format = "f", digits = 2), "%"), NA),
+    Metric == "SampleSize" ~ as.character(.x),
+    TRUE ~ formatC(.x, format = "f", digits = 3)))) %>%
+  bind_rows(tibble(Metric = "CI",
+      !!!setNames(rep(paste0(conf_level * 100, "%"), ncol(.) - 1),
+                  names(.)[-1])))
+
+parallelism_by_serial_dilution %>%
+  flextable() %>%
+  fontsize(size = 10) %>%
+  autofit()
+
+```
+
+\pagebreak
+
+# Ruggedness
+
+## Ruggedness: All Plate IDs
+
+<br>
+
+```{r ruggedness plate IDs}
+
+ruggedness_plate_table <- ruggedness_data %>%
+  distinct(plateID) %>%
+  arrange(plateID) %>%
+  mutate(index = ceiling(row_number() / 2),
+         col = ifelse(row_number() %% 2 == 1, "Column1", "Column2")) %>%
+  pivot_wider(names_from = col, values_from = plateID) %>%
+  select(Column1, Column2)
+
+ruggedness_plate_table %>%
+  flextable() %>%
+  set_header_labels(Column1 = "Plate IDs", Column2 = "") %>%
+  fontsize(size = 10) %>%
+  autofit()
+
+```
+
+\pagebreak
+
+## Ruggedness: All Plates (Max and Min)
+
+<br>
+
+```{r ruggedness all}
+
+# Serial-level
+ruggedness_serial_summary <- ruggedness_data %>%
+  filter(serial %in% ruggedness_plates$serial) %>%
+  group_by(serial) %>%
+  summarise(
+    AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
+    StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
+    CV_ParmA = StdevParmA / AvgParmA * 100,
+    
+    AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
+    StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
+    CV_ParmB = StdevParmB / AvgParmB * 100,
+    
+    AvgRP   = mean(rp, na.rm = TRUE),
+    StdevRP = sd(rp, na.rm = TRUE),
+    CV_RP   = StdevRP / AvgRP * 100,
+    
+    SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
+    MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+    Lower_ParmA = AvgParmA - MarginError_ParmA,
+    Upper_ParmA = AvgParmA + MarginError_ParmA,
+    MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+    Lower_ParmB = AvgParmB - MarginError_ParmB,
+    Upper_ParmB = AvgParmB + MarginError_ParmB,
+    .groups = "drop")
+
+# Avg serial results
+avg_serials <- ruggedness_serial_summary %>%
+  summarise(
+    AvgParmA = mean(AvgParmA, na.rm = TRUE),
+    StdevParmA = mean(StdevParmA, na.rm = TRUE),
+    CV_ParmA = StdevParmA / AvgParmA * 100,
+    
+    AvgParmB = mean(AvgParmB, na.rm = TRUE),
+    StdevParmB = mean(StdevParmB, na.rm = TRUE),
+    CV_ParmB = StdevParmB / AvgParmB * 100,
+    
+    AvgRP = mean(AvgRP, na.rm = TRUE),
+    StdevRP = mean(StdevRP, na.rm = TRUE),
+    CV_RP = StdevRP / AvgRP * 100,
+    
+    SampleSize = sum(SampleSize),
+    MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+    Lower_ParmA = AvgParmA - MarginError_ParmA,
+    Upper_ParmA = AvgParmA + MarginError_ParmA,
+    MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+    Lower_ParmB = AvgParmB - MarginError_ParmB,
+    Upper_ParmB = AvgParmB + MarginError_ParmB) %>%
+  pivot_longer(everything(), names_to = "Metric", values_to = "Avg_Serials")
+
+# All data (not by serial)
+all_plates <- ruggedness_data %>%
+  summarise(
+    AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
+    StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
+    CV_ParmA = StdevParmA / AvgParmA * 100,
+    
+    AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
+    StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
+    CV_ParmB = StdevParmB / AvgParmB * 100,
+    
+    AvgRP = mean(rp, na.rm = TRUE),
+    StdevRP = sd(rp, na.rm = TRUE),
+    CV_RP = StdevRP / AvgRP * 100,
+    
+    SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
+    MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+    Lower_ParmA = AvgParmA - MarginError_ParmA,
+    Upper_ParmA = AvgParmA + MarginError_ParmA,
+    MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+    Lower_ParmB = AvgParmB - MarginError_ParmB,
+    Upper_ParmB = AvgParmB + MarginError_ParmB) %>%
+  pivot_longer(everything(), names_to = "Metric", values_to = "All")
+
+ruggedness_all <- ruggedness_serial_summary %>%
+  slice(match(ruggedness_serials, serial)) %>%
+  pivot_longer(cols = -serial, names_to = "Metric", values_to = "Value") %>%
+  pivot_wider(names_from = serial, values_from = Value) %>%
+  left_join(all_plates, by = "Metric") %>%
+  left_join(avg_serials, by = "Metric")
+
+ruggedness_all <- ruggedness_all %>%
+  mutate(across(-Metric, ~ case_when(
+    Metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB") ~
+      formatC(.x, format = "f", digits = 1),
+    Metric %in% c("CV_ParmA","CV_ParmB","CV_RP") ~
+      paste0(formatC(.x, format = "f", digits = 2), "%"),
+    Metric == "SampleSize" ~ as.character(.x),
+    TRUE ~ formatC(.x, format = "f", digits = 3))))
+
+ci_row <- tibble(Metric = "CI",
+  !!!setNames(rep(paste0(conf_level * 100, "%"), ncol(ruggedness_all) - 1),
+              names(ruggedness_all)[-1]))
+
+ruggedness_table <- bind_rows(ruggedness_all, ci_row) %>%
+  arrange(factor(Metric, levels = c(
+    "AvgParmA","StdevParmA","CV_ParmA",
+    "AvgParmB","StdevParmB","CV_ParmB",
+    "AvgRP","StdevRP","CV_RP", "SampleSize","CI",
+    "MarginError_ParmA","Lower_ParmA","Upper_ParmA",
+    "MarginError_ParmB","Lower_ParmB","Upper_ParmB" )))
+
+ruggedness_table %>%
+  flextable() %>%
+  fontsize(size = 10) %>%
+  autofit() %>%
+  hline(i = which(ruggedness_all$Metric %in% c("CV_ParmA","CV_ParmB","CV_RP","CI","Upper_ParmA")),
+        border = fp_border(color = "gray", width = 1))
+
+```
+
+\pagebreak
+
+## Ruggedness: Minimum Plates
+
+<br>
+
+```{r ruggedness min}
+
+make_ruggedness_min_table <- function(data) {
+  ruggedness_min_summary <- data %>%
+    filter(serial %in% ruggedness_plates$serial) %>%
+    group_by(serial) %>%
+    summarise(
+      AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
+      StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
+      CV_ParmA = StdevParmA / AvgParmA * 100,
+
+      AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
+      StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
+      CV_ParmB = StdevParmB / AvgParmB * 100,
+
+      AvgRP   = mean(rp, na.rm = TRUE),
+      StdevRP = sd(rp, na.rm = TRUE),
+      CV_RP   = StdevRP / AvgRP * 100,
+
+      SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
+      MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+      Lower_ParmA = AvgParmA - MarginError_ParmA,
+      Upper_ParmA = AvgParmA + MarginError_ParmA,
+      MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+      Lower_ParmB = AvgParmB - MarginError_ParmB,
+      Upper_ParmB = AvgParmB + MarginError_ParmB,
+      .groups = "drop")
+
+  ruggedness_min <- ruggedness_min_summary %>%
+    slice(match(ruggedness_serials, serial)) %>%
+    pivot_longer(cols = -serial, names_to = "Metric", values_to = "Value") %>%
+    pivot_wider(names_from = serial, values_from = Value) %>%
+    mutate(across(-Metric, ~ case_when(
+      Metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB") ~
+        formatC(.x, format = "f", digits = 1),
+      Metric %in% c("CV_ParmA","CV_ParmB","CV_RP") ~
+        paste0(formatC(.x, format = "f", digits = 2), "%"),
+      Metric == "SampleSize" ~ as.character(.x),
+      TRUE ~ formatC(.x, format = "f", digits = 3))))
+
+  ci_row <- tibble(Metric = "CI", !!!setNames(
+      rep(paste0(conf_level * 100, "%"), ncol(ruggedness_min) - 1),
+      names(ruggedness_min)[-1]))
+
+  bind_rows(ruggedness_min, ci_row) %>%
+    arrange(factor(Metric, levels = c(
+      "AvgParmA","StdevParmA","CV_ParmA",
+      "AvgParmB","StdevParmB","CV_ParmB",
+      "AvgRP","StdevRP","CV_RP", "SampleSize","CI",
+      "MarginError_ParmA","Lower_ParmA","Upper_ParmA",
+      "MarginError_ParmB","Lower_ParmB","Upper_ParmB")))}
+
+min_has_temp <- any(grepl("temp", ruggedness_min_data$plateID, ignore.case = TRUE))
+min_has_time <- any(grepl("time", ruggedness_min_data$plateID, ignore.case = TRUE))
+
+ruggedness_min_table <- make_ruggedness_min_table(ruggedness_min_data)
+
+```
+
+```{r ruggedness min temp, results='asis'}
+
+if (min_has_temp) {
+  ruggedness_min_temp_table <- ruggedness_min_data %>%
+    filter(grepl("temp", plateID, ignore.case = TRUE)) %>%
+    make_ruggedness_min_table()
+
+  ruggedness_min_temp_table %>%
+    flextable() %>%
+    set_caption("Min Temp") %>%
+    fontsize(10) %>%
+    autofit()}
+
+if (min_has_time) {cat("\n\\pagebreak\n")}
+
+```
+
+```{r ruggedness min time}
+
+if (min_has_time) {
+  ruggedness_min_time_table <- ruggedness_min_data %>%
+    filter(grepl("time", plateID, ignore.case = TRUE)) %>%
+    make_ruggedness_min_table()
+
+  ruggedness_min_time_table %>%
+    flextable() %>%
+    set_caption("Min Time") %>%
+    fontsize(10) %>%
+    autofit()}
+
+```
+
+```{r ruggedness min overall}
+
+if (!min_has_temp && !min_has_time) {
+  ruggedness_min_table <- make_ruggedness_min_table(ruggedness_min_data)
+  
+  ruggedness_min_table %>%
+    flextable() %>%
+    set_caption("All Min") %>%
+    fontsize(10) %>%
+    autofit()}
+
+```
+
+\pagebreak
+
+## Ruggedness: Maximum Plates
+
+<br>
+
+```{r ruggedness max}
+
+make_ruggedness_max_table <- function(data) {
+  ruggedness_max_summary <- data %>%
+    filter(serial %in% ruggedness_plates$serial) %>%
+    group_by(serial) %>%
+    summarise(
+      AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
+      StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
+      CV_ParmA = StdevParmA / AvgParmA * 100,
+
+      AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
+      StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
+      CV_ParmB = StdevParmB / AvgParmB * 100,
+
+      AvgRP   = mean(rp, na.rm = TRUE),
+      StdevRP = sd(rp, na.rm = TRUE),
+      CV_RP   = StdevRP / AvgRP * 100,
+
+      SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
+      MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+      Lower_ParmA = AvgParmA - MarginError_ParmA,
+      Upper_ParmA = AvgParmA + MarginError_ParmA,
+      MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+      Lower_ParmB = AvgParmB - MarginError_ParmB,
+      Upper_ParmB = AvgParmB + MarginError_ParmB,
+      .groups = "drop")
+
+  ruggedness_max <- ruggedness_max_summary %>%
+    slice(match(ruggedness_serials, serial)) %>%
+    pivot_longer(cols = -serial, names_to = "Metric", values_to = "Value") %>%
+    pivot_wider(names_from = serial, values_from = Value) %>%
+    mutate(across(-Metric, ~ case_when(
+      Metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB") ~
+        formatC(.x, format = "f", digits = 1),
+      Metric %in% c("CV_ParmA","CV_ParmB","CV_RP") ~
+        paste0(formatC(.x, format = "f", digits = 2), "%"),
+      Metric == "SampleSize" ~ as.character(.x),
+      TRUE ~ formatC(.x, format = "f", digits = 3))))
+
+  ci_row <- tibble(Metric = "CI", !!!setNames(
+      rep(paste0(conf_level * 100, "%"), ncol(ruggedness_max) - 1),
+      names(ruggedness_max)[-1]))
+
+  bind_rows(ruggedness_max, ci_row) %>%
+    arrange(factor(Metric, levels = c(
+      "AvgParmA","StdevParmA","CV_ParmA",
+      "AvgParmB","StdevParmB","CV_ParmB",
+      "AvgRP","StdevRP","CV_RP",
+      "SampleSize","CI",
+      "MarginError_ParmA","Lower_ParmA","Upper_ParmA",
+      "MarginError_ParmB","Lower_ParmB","Upper_ParmB")))}
+
+max_has_temp <- any(grepl("temp", ruggedness_max_data$plateID, ignore.case = TRUE))
+max_has_time <- any(grepl("time", ruggedness_max_data$plateID, ignore.case = TRUE))
+
+ruggedness_max_table <- make_ruggedness_max_table(ruggedness_max_data)
+
+```
+
+```{r ruggedness max temp, results='asis'}
+
+if (max_has_temp) {
+  ruggedness_max_temp_table <- ruggedness_max_data %>%
+    filter(grepl("temp", plateID, ignore.case = TRUE)) %>%
+    make_ruggedness_max_table()
+
+  ruggedness_max_temp_table %>%
+    flextable() %>%
+    set_caption("Max Temp") %>%
+    fontsize(10) %>%
+    autofit()}
+
+if (max_has_time) {cat("\n\\pagebreak\n")}
+
+```
+
+```{r ruggedness max time}
+
+if (max_has_time) {
+  ruggedness_max_time_table <- ruggedness_max_data %>%
+    filter(grepl("time", plateID, ignore.case = TRUE)) %>%
+    make_ruggedness_max_table()
+
+  ruggedness_max_time_table %>%
+    flextable() %>%
+    set_caption("Max Time") %>%
+    fontsize(10) %>%
+    autofit()}
+
+```
+
+```{r ruggedness max overall}
+
+if (!max_has_temp && !max_has_time) {
+  ruggedness_max_table <- make_ruggedness_max_table(ruggedness_max_data)
+  
+  ruggedness_max_table %>%
+    flextable() %>%
+    set_caption("All Max") %>%
+    fontsize(10) %>%
+    autofit()}
+
+```
