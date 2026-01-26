@@ -1,6 +1,6 @@
-# -------------------------------------------------------------------------------
-# Instructions: copy-paste file directory in setwd(). Change \ to / if needed. Run the script.
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------
+# Instructions: copy-paste file directory in setwd(). Change \ to / if needed. Run the whole script.
+# ----------------------------------------------------------------------------------------------------
 
 # Copy-paste directory for files here. Make sure to change \ to /.
 setwd("")
@@ -60,3 +60,4 @@ SerialTesting <- data.frame(
   stringsAsFactors = FALSE)
 
 write.csv(SerialTesting, "SerialTesting.csv", row.names = FALSE, quote = FALSE)
+
