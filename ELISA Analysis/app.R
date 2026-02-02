@@ -151,21 +151,22 @@ make_ruggedness_max_table <- function(data) {
 # UI
 # -------------------------------------------------
 ui <- fluidPage(
-  titlePanel("ELISA Analysis – Parallelism & Ruggedness"),
+  titlePanel("ELISA Analysis – Uniformity, Parallelism, and Ruggedness"),
   
-  sidebarLayout(
-    sidebarPanel(
+  fluidRow(column(width = 12,
       fileInput("dilution_file", "Upload Dilution CSV"),
       fileInput("layout_file", "Upload Layout CSV"),
+      fileInput("od_file", "Upload OD CSV"),
       fileInput("serialtesting_file", "Upload SerialTesting CSV"),
       actionButton("run", "Run Analysis", class = "btn-primary"),
-      actionButton("clear", "Clear")),
-    
-    mainPanel(
-      uiOutput("parallelism_ui"),
-      hr(),
-      uiOutput("ruggedness_ui"))))
-
+      actionButton("clear", "Clear"))),
+  hr(),
+  
+  fluidRow(column(width = 12,
+      tabsetPanel(
+        tabPanel("Uniformity", uiOutput("uniformity_ui")),
+        tabPanel("Parallelism", uiOutput("parallelism_ui")),
+        tabPanel("Ruggedness", uiOutput("ruggedness_ui"))))))
 # -------------------------------------------------
 # Server
 # -------------------------------------------------
@@ -557,3 +558,4 @@ server <- function(input, output, session) {
 # Run app
 # -------------------------------------------------
 shinyApp(ui, server)
+
