@@ -167,6 +167,8 @@ ui <- fluidPage(
         tabPanel("Uniformity", uiOutput("uniformity_ui")),
         tabPanel("Parallelism", uiOutput("parallelism_ui")),
         tabPanel("Ruggedness", uiOutput("ruggedness_ui"))))))
+
+
 # -------------------------------------------------
 # Server
 # -------------------------------------------------
@@ -558,4 +560,5 @@ server <- function(input, output, session) {
 # Run app
 # -------------------------------------------------
 shinyApp(ui, server)
+
 
