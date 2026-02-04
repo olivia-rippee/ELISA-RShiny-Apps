@@ -163,20 +163,64 @@ format_plate_stats <- function(stats_row) {
 ui <- fluidPage(
   titlePanel("ELISA Analysis – Uniformity, Parallelism, and Ruggedness"),
   
-  fluidRow(column(width = 12,
+  fluidRow(column(12,
+    checkboxGroupInput("analyses", "Select analyses to run:",
+                    choices = c("Uniformity"  = "uniformity", "Parallelism" = "parallelism", "Ruggedness"  = "ruggedness")),
+                  
+    conditionalPanel(
+      condition = "input.analyses.includes('parallelism')",
       fileInput("dilution_file", "Upload Dilution CSV"),
-      fileInput("layout_file", "Upload Layout CSV"),
-      fileInput("od_file", "Upload OD CSV"),
-      fileInput("serialtesting_file", "Upload SerialTesting CSV"),
-      actionButton("run", "Run Analysis", class = "btn-primary"),
-      actionButton("clear", "Clear"))),
+      fileInput("layout_file", "Upload Layout CSV")),
+                  
+    conditionalPanel(
+      condition = "input.analyses.includes('uniformity')",
+      fileInput("od_file", "Upload OD CSV")),
+                  
+    conditionalPanel(
+      condition = "input.analyses.includes('parallelism') || input.analyses.includes('ruggedness')",
+      fileInput("serialtesting_file", "Upload SerialTesting CSV")),
+                  
+    actionButton("run", "Run Analysis", class = "btn-primary"),
+    actionButton("clear", "Clear"))),
+  
   hr(),
   
-  fluidRow(column(width = 12,
-      tabsetPanel(
-        tabPanel("Uniformity", uiOutput("uniformity_ui")),
-        tabPanel("Parallelism", uiOutput("parallelism_ui")),
-        tabPanel("Ruggedness", uiOutput("ruggedness_ui"))))))
+  tabsetPanel(
+    tabPanel("Uniformity",
+             conditionalPanel(
+               condition = "input.analyses.includes('uniformity')",
+               uiOutput("uniformity_ui")
+             ),
+             conditionalPanel(
+               condition = "!input.analyses.includes('uniformity')",
+               h4("Uniformity not selected.")
+             )),
+    
+    tabPanel("Parallelism",
+             conditionalPanel(
+               condition = "input.analyses.includes('parallelism')",
+               uiOutput("parallelism_ui")
+             ),
+             conditionalPanel(
+               condition = "!input.analyses.includes('parallelism')",
+               h4("Parallelism not selected.")
+             )
+    ),
+    
+    tabPanel("Ruggedness",
+             conditionalPanel(
+               condition = "input.analyses.includes('ruggedness')",
+               uiOutput("ruggedness_ui")
+             ),
+             conditionalPanel(
+               condition = "!input.analyses.includes('ruggedness')",
+               h4("Ruggedness not selected.")
+             )
+    )
+  )
+  
+  )
+
 
 # -------------------------------------------------
 # Server
@@ -190,7 +234,20 @@ server <- function(input, output, session) {
   # -------------------
   data_all <- eventReactive(input$run, {
     
-    req(input$serialtesting_file, input$dilution_file, input$layout_file)
+    req(input$analyses)
+    
+    # -------------------
+    # Conditional file requirements
+    # -------------------
+    if ("uniformity" %in% input$analyses) {
+      req(input$od_file)}
+    
+    if ("parallelism" %in% input$analyses) {
+      req(input$serialtesting_file, input$dilution_file, input$layout_file)}
+    
+    if ("ruggedness" %in% input$analyses) {
+      req(input$serialtesting_file)}
+    
     
     serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
     
@@ -208,188 +265,214 @@ server <- function(input, output, session) {
     
     # Uniformity plates
     # -------------------
-    ODs <- read.csv(input$od_file$datapath, stringsAsFactors = FALSE)
-    colnames(ODs) <- sub("^X(?=\\d)", "", colnames(ODs), perl = TRUE)
+    if ("uniformity" %in% input$analyses) {
+      
+      ODs <- read.csv(input$od_file$datapath, stringsAsFactors = FALSE)
+      colnames(ODs) <- sub("^X(?=\\d)", "", colnames(ODs), perl = TRUE)
+      
+      uniformity_plates <- ODs %>%
+        filter(grepl("Uniformity", plateID, ignore.case = TRUE)) %>%
+        group_by(plateID) %>%
+        mutate(Row = LETTERS[row_number()]) %>%
+        ungroup()
+      
+      uniformity_long <- uniformity_plates %>%
+        pivot_longer(`1`:`12`, names_to = "Col", values_to = "OD") %>%
+        mutate(
+          Row = as.character(Row),
+          Col = as.character(Col),
+          OD  = as.numeric(OD))
+      
+      row_levels <- c(sort(unique(uniformity_long$Row)), "Avg")
+      col_levels <- c(sort(as.numeric(unique(uniformity_long$Col))), "Avg") |> as.character()
+      
+      row_avgs <- uniformity_long %>%
+        group_by(plateID, Row) %>%
+        summarise(OD = mean(OD, na.rm = TRUE), Col = "Avg", .groups = "drop")
+      
+      col_avgs <- uniformity_long %>%
+        group_by(plateID, Col) %>%
+        summarise(OD = mean(OD, na.rm = TRUE), Row = "Avg", .groups = "drop")
+      
+      overall_avg_plate <- uniformity_long %>%
+        group_by(plateID) %>%
+        summarise(Row = "Avg", Col = "Avg", OD = mean(OD, na.rm = TRUE), .groups = "drop")
+      
+      heatmap_df <- bind_rows(uniformity_long, row_avgs, col_avgs, overall_avg_plate) %>%
+        mutate(
+          Row = factor(Row, levels = rev(row_levels)),
+          Col = factor(Col, levels = col_levels))
+      
+      heatmap_list <- split(heatmap_df, heatmap_df$plateID)
+      
+      avg_well <- uniformity_long %>%
+        group_by(plateID, Row, Col) %>%
+        summarise(OD = mean(OD, na.rm = TRUE), .groups = "drop")
+      
+      row_avg_all <- avg_well %>%
+        group_by(plateID, Row) %>%
+        summarise(OD = mean(OD), Col = "Avg", .groups = "drop")
+      
+      col_avg_all <- avg_well %>%
+        group_by(plateID, Col) %>%
+        summarise(OD = mean(OD), Row = "Avg", .groups = "drop")
+      
+      overall_avg_all <- avg_well %>%
+        group_by(plateID) %>%
+        summarise(Row = "Avg", Col = "Avg", OD = mean(OD), .groups = "drop")
+      
+      heatmap_avg <- bind_rows(avg_well, row_avg_all, col_avg_all, overall_avg_all) %>%
+        mutate(
+          Row = factor(Row, levels = rev(row_levels)),
+          Col = factor(Col, levels = col_levels))
+      
+      heatmap_all_plates <- heatmap_avg %>%
+        group_by(Row, Col) %>%
+        summarise(OD = mean(OD, na.rm = TRUE), .groups = "drop") %>%
+        mutate(
+          Row = factor(Row, levels = rev(row_levels)),
+          Col = factor(Col, levels = col_levels),
+          plateID = "All Plates")
+      
+      metrics_df <- uniformity_long %>%
+        mutate(
+          Row_num = match(Row, LETTERS),
+          Col_num = as.numeric(Col))
+      
+      inner_wells <- metrics_df %>%
+        filter(Row_num %in% 2:7, Col_num %in% 2:11)
+      
+      uniformity_metrics <- metrics_df %>%
+        group_by(plateID) %>%
+        summarise(
+          Q25 = quantile(OD, 0.25, na.rm = TRUE),
+          Median = quantile(OD, 0.50, na.rm = TRUE),
+          Q75 = quantile(OD, 0.75, na.rm = TRUE),
+          CV = cv(OD),
+          Inner_CV = cv(inner_wells$OD[inner_wells$plateID == unique(plateID)]),
+          Ratio_Max_Min = max(OD) / min(OD) * 100,
+          Inner_Ratio_Max_Min =
+            max(inner_wells$OD[inner_wells$plateID == unique(plateID)]) /
+            min(inner_wells$OD[inner_wells$plateID == unique(plateID)]) * 100,
+          .groups = "drop")
+      
+      overall_metrics <- metrics_df %>%
+        summarise(
+          plateID = "All Plates",
+          Q25 = quantile(OD, 0.25),
+          Median = quantile(OD, 0.50),
+          Q75 = quantile(OD, 0.75),
+          CV = cv(OD),
+          Inner_CV = cv(inner_wells$OD),
+          Ratio_Max_Min = max(OD) / min(OD) * 100,
+          Inner_Ratio_Max_Min =
+            max(inner_wells$OD) / min(inner_wells$OD) * 100)
+      
+      uniformity_metrics <- bind_rows(uniformity_metrics, overall_metrics)
     
-    uniformity_plates <- ODs %>%
-      filter(grepl("Uniformity", plateID, ignore.case = TRUE)) %>%
-      group_by(plateID) %>%
-      mutate(Row = LETTERS[row_number()]) %>%
-      ungroup()
+    } else {
+      uniformity_plates <- heatmap_df <- heatmap_list <- heatmap_avg <-
+        heatmap_all_plates <- uniformity_metrics <- NULL}
     
-    uniformity_long <- uniformity_plates %>%
-      pivot_longer(`1`:`12`, names_to = "Col", values_to = "OD") %>%
-      mutate(
-        Row = as.character(Row),
-        Col = as.character(Col),
-        OD  = as.numeric(OD))
-    
-    row_levels <- c(sort(unique(uniformity_long$Row)), "Avg")
-    col_levels <- c(sort(as.numeric(unique(uniformity_long$Col))), "Avg") |> as.character()
-    
-    row_avgs <- uniformity_long %>%
-      group_by(plateID, Row) %>%
-      summarise(OD = mean(OD, na.rm = TRUE), Col = "Avg", .groups = "drop")
-    
-    col_avgs <- uniformity_long %>%
-      group_by(plateID, Col) %>%
-      summarise(OD = mean(OD, na.rm = TRUE), Row = "Avg", .groups = "drop")
-    
-    overall_avg_plate <- uniformity_long %>%
-      group_by(plateID) %>%
-      summarise(Row = "Avg", Col = "Avg", OD = mean(OD, na.rm = TRUE), .groups = "drop")
-    
-    heatmap_df <- bind_rows(
-      uniformity_long,
-      row_avgs,
-      col_avgs,
-      overall_avg_plate) %>%
-      mutate(
-        Row = factor(Row, levels = rev(row_levels)),
-        Col = factor(Col, levels = col_levels))
-    
-    heatmap_list <- split(heatmap_df, heatmap_df$plateID)
-    
-    avg_well <- uniformity_long %>%
-      group_by(plateID, Row, Col) %>%
-      summarise(OD = mean(OD, na.rm = TRUE), .groups = "drop")
-    
-    row_avg_all <- avg_well %>%
-      group_by(plateID, Row) %>%
-      summarise(OD = mean(OD), Col = "Avg", .groups = "drop")
-    
-    col_avg_all <- avg_well %>%
-      group_by(plateID, Col) %>%
-      summarise(OD = mean(OD), Row = "Avg", .groups = "drop")
-    
-    overall_avg_all <- avg_well %>%
-      group_by(plateID) %>%
-      summarise(Row = "Avg", Col = "Avg", OD = mean(OD), .groups = "drop")
-    
-    heatmap_avg <- bind_rows(
-      avg_well,
-      row_avg_all,
-      col_avg_all,
-      overall_avg_all) %>%
-      mutate(
-        Row = factor(Row, levels = rev(row_levels)),
-        Col = factor(Col, levels = col_levels))
-    
-    heatmap_all_plates <- heatmap_avg %>%
-      group_by(Row, Col) %>%
-      summarise(OD = mean(OD, na.rm = TRUE), .groups = "drop") %>%
-      mutate(
-        Row = factor(Row, levels = rev(row_levels)),
-        Col = factor(Col, levels = col_levels),
-        plateID = "All Plates")
-    
-    metrics_df <- uniformity_long %>%
-      mutate(
-        Row_num = match(Row, LETTERS),
-        Col_num = as.numeric(Col))
-    
-    inner_wells <- metrics_df %>%
-      filter(Row_num %in% 2:7, Col_num %in% 2:11)
-    
-    uniformity_metrics <- metrics_df %>%
-      group_by(plateID) %>%
-      summarise(
-        Q25 = quantile(OD, 0.25, na.rm = TRUE),
-        Median = quantile(OD, 0.50, na.rm = TRUE),
-        Q75 = quantile(OD, 0.75, na.rm = TRUE),
-        CV = cv(OD),
-        Inner_CV = cv(inner_wells$OD[inner_wells$plateID == unique(plateID)]),
-        Ratio_Max_Min = max(OD) / min(OD) * 100,
-        Inner_Ratio_Max_Min =
-          max(inner_wells$OD[inner_wells$plateID == unique(plateID)]) /
-          min(inner_wells$OD[inner_wells$plateID == unique(plateID)]) * 100,
-        .groups = "drop")
-    
-    overall_metrics <- metrics_df %>%
-      summarise(
-        plateID = "All Plates",
-        Q25 = quantile(OD, 0.25),
-        Median = quantile(OD, 0.50),
-        Q75 = quantile(OD, 0.75),
-        CV = cv(OD),
-        Inner_CV = cv(inner_wells$OD),
-        Ratio_Max_Min = max(OD) / min(OD) * 100,
-        Inner_Ratio_Max_Min =
-          max(inner_wells$OD) / min(inner_wells$OD) * 100)
-    
-    uniformity_metrics <- bind_rows(uniformity_metrics, overall_metrics)
     
     # Parallelism plates
     # -------------------
-    parallelism_plates <- serial_testing %>%
-      filter(grepl("Parallelism", plateID, TRUE),
-             serial %in% c("SerA","SerB","PC")) %>%
-      arrange(serialID)
+    if ("parallelism" %in% input$analyses) {
+      
+      serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
+    
+      serial_testing <- serial_testing %>%
+        mutate(
+          serial = case_when(
+            grepl("-120", serialID, TRUE) ~ "120",
+            grepl("SERA", serialID, TRUE) ~ "SerA",
+            grepl("SERB", serialID, TRUE) ~ "SerB",
+            grepl("PC",   serialID, TRUE) ~ "PC",
+            grepl("NC",   serialID, TRUE) ~ "NC",
+            grepl("MR",   serialID, TRUE) ~ "MR",
+            TRUE ~ NA_character_),
+          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+      
+      parallelism_plates <- serial_testing %>%
+        filter(grepl("Parallelism", plateID, TRUE),
+               serial %in% c("SerA","SerB","PC")) %>%
+        arrange(serialID)
+      
+      # Dilution + layout
+      # -------------------
+      dilution <- read.csv(input$dilution_file$datapath, stringsAsFactors = FALSE)
+      layout   <- read.csv(input$layout_file$datapath, stringsAsFactors = FALSE)
+      
+      dilution <- dilution %>%
+        group_by(plateID) %>%
+        mutate(RowLetter = LETTERS[row_number()]) %>%
+        ungroup()
+      
+      layout <- layout %>%
+        group_by(plateID) %>%
+        mutate(RowLetter = LETTERS[row_number()]) %>%
+        ungroup()
+      
+      dilution_long <- dilution %>%
+        pivot_longer(starts_with("X"), names_to = "Column", values_to = "Dilution") %>%
+        mutate(Column = as.integer(sub("X", "", Column)))
+      
+      layout_long <- layout %>%
+        pivot_longer(starts_with("X"), names_to = "Column", values_to = "serialID") %>%
+        mutate(Column = as.integer(sub("X", "", Column)))
+      
+      well_mapping <- layout_long %>%
+        left_join(dilution_long, by = c("plateID","RowLetter","Column")) %>%
+        mutate(
+          serial = case_when(
+            grepl("-120", serialID, TRUE) ~ "120",
+            grepl("SERA", serialID, TRUE) ~ "SerA",
+            grepl("SERB", serialID, TRUE) ~ "SerB",
+            grepl("PC",   serialID, TRUE) ~ "PC",
+            grepl("NC",   serialID, TRUE) ~ "NC",
+            grepl("MR",   serialID, TRUE) ~ "MR",
+            TRUE ~ NA_character_),
+          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+      
+      start_dilutions <- well_mapping %>%
+        group_by(plateID, serialID) %>%
+        slice_min(Dilution, n = 1, with_ties = FALSE) %>%
+        ungroup()
+      
+    } else {parallelism_plates <- start_dilutions <- NULL}
+    
     
     # Ruggedness plates
     # -------------------
-    ruggedness_plates <- serial_testing %>%
-      filter(grepl("min|max|ruggedness", plateID, TRUE),
-             serial %in% c("120","SerB","PC")) %>%
-      arrange(serialID)
-    
-    # Dilution + layout
-    # -------------------
-    dilution <- read.csv(input$dilution_file$datapath, stringsAsFactors = FALSE)
-    layout   <- read.csv(input$layout_file$datapath, stringsAsFactors = FALSE)
-    
-    dilution <- dilution %>%
-      group_by(plateID) %>%
-      mutate(RowLetter = LETTERS[row_number()]) %>%
-      ungroup()
-    
-    layout <- layout %>%
-      group_by(plateID) %>%
-      mutate(RowLetter = LETTERS[row_number()]) %>%
-      ungroup()
-    
-    dilution_long <- dilution %>%
-      pivot_longer(starts_with("X"), names_to = "Column", values_to = "Dilution") %>%
-      mutate(Column = as.integer(sub("X", "", Column)))
-    
-    layout_long <- layout %>%
-      pivot_longer(starts_with("X"), names_to = "Column", values_to = "serialID") %>%
-      mutate(Column = as.integer(sub("X", "", Column)))
-    
-    well_mapping <- layout_long %>%
-      left_join(dilution_long, by = c("plateID","RowLetter","Column")) %>%
-      mutate(
-        serial = case_when(
-          grepl("-120", serialID, TRUE) ~ "120",
-          grepl("SERA", serialID, TRUE) ~ "SerA",
-          grepl("SERB", serialID, TRUE) ~ "SerB",
-          grepl("PC",   serialID, TRUE) ~ "PC",
-          grepl("NC",   serialID, TRUE) ~ "NC",
-          grepl("MR",   serialID, TRUE) ~ "MR",
-          TRUE ~ NA_character_),
-        serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
-    
-    start_dilutions <- well_mapping %>%
-      group_by(plateID, serialID) %>%
-      slice_min(Dilution, n = 1, with_ties = FALSE) %>%
-      ungroup()
-    
-    list(
-        uniformity_plates = uniformity_plates,
-        heatmap_df = heatmap_df,
-        heatmap_list = heatmap_list,
-        heatmap_avg = heatmap_avg,
-        heatmap_all_plates = heatmap_all_plates,
-        uniformity_metrics = uniformity_metrics,
-        
-        
-        parallelism = parallelism_plates %>%
-          left_join(start_dilutions, by = c("plateID","serialID","serial")) %>%
-          mutate(dilution_group = paste0(serial, " ", Dilution)),
+    if ("ruggedness" %in% input$analyses) {
+      ruggedness_plates <- serial_testing %>%
+        filter(grepl("min|max|ruggedness", plateID, TRUE),
+               serial %in% c("120","SerB","PC")) %>%
+        arrange(serialID)
       
-        ruggedness = ruggedness_plates,
-        ruggedness_min = ruggedness_plates %>% filter(grepl("min", plateID, TRUE)),
-        ruggedness_max = ruggedness_plates %>% filter(grepl("max", plateID, TRUE)))})
+      ruggedness_min <- ruggedness_plates %>% filter(grepl("min", plateID, TRUE))
+      ruggedness_max <- ruggedness_plates %>% filter(grepl("max", plateID, TRUE))
+      
+    } else {ruggedness_plates <- ruggedness_min <- ruggedness_max <- NULL}
+    
+  
+    list(
+      uniformity_plates = uniformity_plates,
+      heatmap_df = heatmap_df,
+      heatmap_list = heatmap_list,
+      heatmap_avg = heatmap_avg,
+      heatmap_all_plates = heatmap_all_plates,
+      uniformity_metrics = uniformity_metrics,
+      
+      parallelism = if (!is.null(parallelism_plates)) {
+        parallelism_plates %>%
+          left_join(start_dilutions, by = c("plateID","serialID","serial")) %>%
+          mutate(dilution_group = paste0(serial, " ", Dilution))
+      } else NULL,
+      
+      ruggedness = ruggedness_plates,
+      ruggedness_min = ruggedness_min,
+      ruggedness_max = ruggedness_max)})
   
   # -------------------------------------------------
   # Uniformity UI
