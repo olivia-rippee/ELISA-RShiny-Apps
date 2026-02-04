@@ -189,37 +189,26 @@ ui <- fluidPage(
     tabPanel("Uniformity",
              conditionalPanel(
                condition = "input.analyses.includes('uniformity')",
-               uiOutput("uniformity_ui")
-             ),
+               uiOutput("uniformity_ui")),
              conditionalPanel(
                condition = "!input.analyses.includes('uniformity')",
-               h4("Uniformity not selected.")
-             )),
+               h4("Uniformity not selected."))),
     
     tabPanel("Parallelism",
              conditionalPanel(
                condition = "input.analyses.includes('parallelism')",
-               uiOutput("parallelism_ui")
-             ),
+               uiOutput("parallelism_ui")),
              conditionalPanel(
                condition = "!input.analyses.includes('parallelism')",
-               h4("Parallelism not selected.")
-             )
-    ),
+               h4("Parallelism not selected."))),
     
     tabPanel("Ruggedness",
              conditionalPanel(
                condition = "input.analyses.includes('ruggedness')",
-               uiOutput("ruggedness_ui")
-             ),
+               uiOutput("ruggedness_ui")),
              conditionalPanel(
                condition = "!input.analyses.includes('ruggedness')",
-               h4("Ruggedness not selected.")
-             )
-    )
-  )
-  
-  )
+               h4("Ruggedness not selected.")))))
 
 
 # -------------------------------------------------
@@ -248,20 +237,6 @@ server <- function(input, output, session) {
     if ("ruggedness" %in% input$analyses) {
       req(input$serialtesting_file)}
     
-    
-    serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
-    
-    serial_testing <- serial_testing %>%
-      mutate(
-        serial = case_when(
-          grepl("-120", serialID, TRUE) ~ "120",
-          grepl("SERA", serialID, TRUE) ~ "SerA",
-          grepl("SERB", serialID, TRUE) ~ "SerB",
-          grepl("PC",   serialID, TRUE) ~ "PC",
-          grepl("NC",   serialID, TRUE) ~ "NC",
-          grepl("MR",   serialID, TRUE) ~ "MR",
-          TRUE ~ NA_character_),
-        serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
     
     # Uniformity plates
     # -------------------
@@ -445,6 +420,20 @@ server <- function(input, output, session) {
     # Ruggedness plates
     # -------------------
     if ("ruggedness" %in% input$analyses) {
+      serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
+      
+      serial_testing <- serial_testing %>%
+        mutate(
+          serial = case_when(
+            grepl("-120", serialID, TRUE) ~ "120",
+            grepl("SERA", serialID, TRUE) ~ "SerA",
+            grepl("SERB", serialID, TRUE) ~ "SerB",
+            grepl("PC",   serialID, TRUE) ~ "PC",
+            grepl("NC",   serialID, TRUE) ~ "NC",
+            grepl("MR",   serialID, TRUE) ~ "MR",
+            TRUE ~ NA_character_),
+          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+      
       ruggedness_plates <- serial_testing %>%
         filter(grepl("min|max|ruggedness", plateID, TRUE),
                serial %in% c("120","SerB","PC")) %>%
@@ -624,9 +613,10 @@ server <- function(input, output, session) {
     datatable(
       data_all()$uniformity_metrics %>%
         mutate(
-          across(where(is.numeric), round, 3),
-          across(c(CV, Inner_CV, Ratio_Max_Min, Inner_Ratio_Max_Min),
-                 ~ paste0(round(.x, 1), "%"))),
+          across(where(is.numeric), \(x) round(x, 3)),
+          across(
+            c(CV, Inner_CV, Ratio_Max_Min, Inner_Ratio_Max_Min),
+            \(x) paste0(round(x, 1), "%"))),
       options = list(dom = "t"),
       rownames = FALSE)})
   
