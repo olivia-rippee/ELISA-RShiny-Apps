@@ -592,19 +592,36 @@ server <- function(input, output, session) {
     lapply(names(hm_list), function(p) {
       local({
         plate <- p
+        
         output[[paste0("hm_", plate)]] <- renderPlot({
           df <- hm_list[[plate]]
-          stats <- data_all()$uniformity_metrics %>%
-            filter(plateID == plate)
           
-          ggplot(df, aes(Col, Row, fill = OD)) +
+          stats <- data_all()$uniformity_metrics %>%
+            filter(plateID == plate) %>%
+            slice(1)
+          
+          heatmap_plot <- ggplot(df, aes(Col, Row, fill = OD)) +
             geom_tile(color = "white") +
             geom_text(aes(label = round(OD, 3)), size = 5) +
+            geom_hline(yintercept = 1.5, linewidth = 1) +
+            geom_vline(xintercept = 12.5, linewidth = 1) +
             coord_fixed() +
             scale_fill_gradient(low = "steelblue", high = "orange2") +
-            scale_x_discrete(position = "top") +
+            scale_x_discrete(position = "top", expand = c(0, 0)) +
+            scale_y_discrete(expand = c(0, 0)) +
             labs(title = plate, fill = "OD") +
-            theme_minimal()})})})})
+            theme_minimal() +
+            theme(panel.grid = element_blank())
+          
+          stats_plot <- ggplot() +
+            annotate("text", x = 0, y = 1,
+              label = format_plate_stats(stats),
+              hjust = 0, vjust = 1,  size = 5) +
+            theme_void() +
+            xlim(0, 1) + ylim(0, 1)
+          
+          heatmap_plot / stats_plot +
+            plot_layout(heights = c(10, 2))})})})})
   
   
   # Statistics Table
@@ -942,3 +959,4 @@ server <- function(input, output, session) {
 # Run app
 # -------------------------------------------------
 shinyApp(ui, server)
+
