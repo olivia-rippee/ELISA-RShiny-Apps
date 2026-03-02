@@ -14,28 +14,28 @@ ui <- fluidPage(
       h4("Enter duration and transfer time for each step:"),
       
       do.call(tagList, lapply(
-        c("CAB", "Block", "Agn", "DAB", "Conj", "Sub", "Stop/Read"),
+        c("Capture", "Block", "Antigen", "Detector", "Conjugate", "Substrate", "Stop/Read"),
         function(step) {
           tagList(
             tags$br(),
             h4(strong(step)),
             fluidRow(
               column(4, numericInput(paste0(step, "_hr"), "Hr:",
-                                     value = ifelse(step == "CAB", 3,
-                                                    ifelse(step == "Block", 2,
-                                                           ifelse(step == "Agn", 18,
-                                                                  ifelse(step == "DAB", 3,
-                                                                         ifelse(step == "Conj", 0,
-                                                                                ifelse(step == "Sub", 0, 0)))))),
+                                     value = ifelse(step == "Capture", 3,
+                                             ifelse(step == "Block", 2,
+                                             ifelse(step == "Antigen", 18,
+                                             ifelse(step == "Detector", 3,
+                                             ifelse(step == "Conjugate", 0,
+                                             ifelse(step == "Substrate", 0, 0)))))),
                                      min = 0)),
               column(4, numericInput(paste0(step, "_min"), "Min:",
-                                     value = ifelse(step == "Conj", 45,
-                                                    ifelse(step == "Sub", 10,
+                                     value = ifelse(step == "Conjugate", 45,
+                                                    ifelse(step == "Substrate", 10,
                                                            ifelse(step == "Stop/Read", 5, 0))),
                                      min = 0, max = 59)),
-              if (!(step %in% c("Sub", "Stop/Read")))
+              if (!(step %in% c("Substrate", "Stop/Read")))
                 column(4, numericInput(paste0(step, "_transfer"), "Transfer (min):",
-                                       value = if (step == "Agn") 10 else 0, min = 0))),
+                                       value = 0, min = 0))),
             tags$hr())})),
       
       actionButton("calc", "Calculate Timings", class = "btn-primary"),
@@ -55,7 +55,7 @@ server <- function(input, output, session) {
       format = "%Y-%m-%d %H:%M",
       tz = Sys.timezone())
     
-    steps <- c("CAB", "Block", "Agn", "DAB", "Conj", "Sub", "Stop/Read")
+    steps <- c("Capture", "Block", "Antigen", "Detector", "Conjugate", "Substrate", "Stop/Read")
     
     durations_min <- sapply(steps,
                             function(s) input[[paste0(s, "_hr")]]*60 + input[[paste0(s, "_min")]])
@@ -99,28 +99,28 @@ server <- function(input, output, session) {
     updateDateInput(session, "start_day", value = Sys.Date())
     updateTextInput(session, "start_time", value = "08:00")
     
-    steps <- c("CAB", "Block", "Agn", "DAB", "Conj", "Sub", "Stop/Read")
+    steps <- c("Capture", "Block", "Antigen", "Detector", "Conjugate", "Substrate", "Stop/Read")
     
     for (step in steps) {
       default_hr <- switch(step,
-                           "CAB" = 3,
+                           "Capture" = 3,
                            "Block" = 2,
-                           "Agn" = 18,
-                           "DAB" = 3,
-                           "Conj" = 0,
-                           "Sub" = 0,
+                           "Antigen" = 18,
+                           "Detector" = 3,
+                           "Conjugate" = 0,
+                           "Substrate" = 0,
                            "Stop/Read" = 0)
       updateNumericInput(session, paste0(step, "_hr"), value = default_hr)
       
       default_min <- switch(step,
-                            "Conj" = 45,
-                            "Sub" = 10,
+                            "Conjugate" = 45,
+                            "Substrate" = 10,
                             "Stop/Read" = 5,
                             0)
       updateNumericInput(session, paste0(step, "_min"), value = default_min)
       
-      if (!(step %in% c("Sub", "Stop/Read"))) {
-        default_transfer <- ifelse(step == "Agn", 10, 0)
+      if (!(step %in% c("Substrate", "Stop/Read"))) {
+        default_transfer <- 0
         updateNumericInput(session, paste0(step, "_transfer"), value = default_transfer)}}
     
     schedule_data(NULL)})
