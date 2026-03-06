@@ -6,7 +6,7 @@ library(dplyr)
 step_sequences <- list(
   Capture = c("Capture", "Block", "Antigen", "Detector", "Conjugate", "Substrate", "Stop/Read"),
   `Direct Bind` = c("Antigen", "Block", "Antibody", "Conjugate", "Substrate", "Stop/Read"),
-  `CpG Hybridization` = c("Capture", "Block", "Detector+Antigen", "Conjugate", "Substrate", "Stop/Read"))
+  `CpG Hybridization` = c("Capture", "Block", "Thermocycle", "Detector+Antigen", "Conjugate", "Substrate", "Stop/Read"))
 
 # Default durations (hr, min, transfer)
 default_durations <- list(
@@ -31,6 +31,7 @@ default_durations <- list(
   `CpG Hybridization` = list(
     Capture = c(hr = 19, min = 0, transfer = 0),
     Block = c(hr = 2, min = 0, transfer = 0),
+    Thermocycle = c(hr = 0, min = 30, transfer = NA),
     `Detector+Antigen` = c(hr = 1, min = 30, transfer = 0),
     Conjugate = c(hr = 1, min = 0, transfer = 0),
     Substrate = c(hr = 0, min = 40, transfer = NA),
@@ -111,10 +112,28 @@ server <- function(input, output, session) {
     
     for (i in seq_along(steps)) {
       step_name <- steps[i]
+      
+      # Duration in minutes
       step_duration <- durations_min[i]
       
-      step_start <- current_time
-      step_end <- current_time + minutes(step_duration)
+      if (current_tab == "CpG Hybridization" && step_name == "Thermocycle") {
+        # Block end time
+        block_row <- df[df$Step == "Block", ]
+        block_end_time <- as.POSIXct(block_row$End_Time, format="%A, %d %b %Y @ %H:%M")
+        
+        # Detector+Antigen start = Block end + transfer after Block
+        block_index <- which(steps == "Block")
+        detector_start_time <- block_end_time + minutes(transfers_min[block_index])
+        
+        # Thermocycle definition
+        step_start <- detector_start_time - minutes(30)
+        step_end <- block_end_time
+        
+        step_duration <- as.numeric(difftime(step_end, step_start, units = "mins"))
+        
+      } else {
+        step_start <- current_time
+        step_end <- current_time + minutes(step_duration)}
       
       df <- rbind(df,
                   data.frame(
@@ -124,7 +143,9 @@ server <- function(input, output, session) {
                     End_Time = format(step_end, "%A, %d %b %Y @ %H:%M"),
                     stringsAsFactors = FALSE))
       
-      current_time <- step_end + minutes(transfers_min[i])}
+      # Update current_time only for non-thermocycle steps
+      if (!(current_tab == "CpG Hybridization" && step_name == "Thermocycle")) {
+        current_time <- step_end + minutes(transfers_min[i])}}
     
     schedule_data[[current_tab]] <- df})
   
