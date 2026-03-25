@@ -22,12 +22,12 @@ ui <- fluidPage(
 
     card(
       min_height = 250,
-      card_header("ELISA Timepoints Calculator"),
-      p("Plan your ELISA timepoints."),
+      card_header("Multiple ELISA Timepoints Calculator"),
+      p("Plan your ELISA timepoints for multiple assays at once."),
       card_footer(
         tags$a(
           "Launch App",
-          href = "https://oliviarippee-elisa-timepoints-calculator.share.connect.posit.cloud",
+          href = "https://oliviarippee-multiple-elisa-timepoints-calculator.share.connect.posit.cloud",
           target = "_blank",
           class = "btn btn-primary w-100"))),
 
