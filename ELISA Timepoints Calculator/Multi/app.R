@@ -14,28 +14,28 @@ step_sequences <- list(
 # Default durations
 default_durations <- list(
   Capture = list(
-    Capture=c(hr=3, min=0, transfer=0),
-    Block=c(hr=2, min=0, transfer=0),
-    Antigen=c(hr=18, min=0, transfer=0),
-    Detector=c(hr=3, min=0, transfer=0),
-    Conjugate=c(hr=0, min=45, transfer=0),
-    Substrate=c(hr=0, min=10, transfer=NA),
-    `Stop/Read`=c(hr=0, min=5, transfer=NA)),
+    Capture = c(hr=3, min=0, transfer=0),
+    Block = c(hr=2, min=0, transfer=0),
+    Antigen = c(hr=18, min=0, transfer=0),
+    Detector = c(hr=3, min=0, transfer=0),
+    Conjugate = c(hr=0, min=45, transfer=0),
+    Substrate = c(hr=0, min=10, transfer=NA),
+    `Stop/Read` = c(hr=0, min=5, transfer=NA)),
   `Direct Bind` = list(
-    Antigen=c(hr=21, min=0, transfer=0),
-    Block=c(hr=1, min=0, transfer=0),
-    Antibody=c(hr=4, min=0, transfer=0),
-    Conjugate=c(hr=1, min=0, transfer=0),
-    Substrate=c(hr=0, min=10, transfer=NA),
-    `Stop/Read`=c(hr=0, min=5, transfer=NA)),
+    Antigen = c(hr=21, min=0, transfer=0),
+    Block = c(hr=1, min=0, transfer=0),
+    Antibody = c(hr=4, min=0, transfer=0),
+    Conjugate = c(hr=1, min=0, transfer=0),
+    Substrate = c(hr=0, min=10, transfer=NA),
+    `Stop/Read` = c(hr=0, min=5, transfer=NA)),
   `CpG Hybridization` = list(
-    Capture=c(hr=19, min=0, transfer=0),
-    Block=c(hr=2, min=0, transfer=0),
-    Thermocycle=c(hr=0, min=30, transfer=NA),
-    `Detector+Antigen`=c(hr=1, min=30, transfer=0),
-    Conjugate=c(hr=1, min=0, transfer=0),
-    Substrate=c(hr=0, min=40, transfer=NA),
-    `Stop/Read`=c(hr=0, min=5, transfer=NA)))
+    Capture = c(hr=19, min=0, transfer=0),
+    Block = c(hr=2, min=0, transfer=0),
+    Thermocycle = c(hr=0, min=30, transfer=NA),
+    `Detector+Antigen` = c(hr=1, min=30, transfer=0),
+    Conjugate = c(hr=1, min=0, transfer=0),
+    Substrate = c(hr=0, min=40, transfer=NA),
+    `Stop/Read` = c(hr=0, min=5, transfer=NA)))
 
 # ------------------
 # UI
