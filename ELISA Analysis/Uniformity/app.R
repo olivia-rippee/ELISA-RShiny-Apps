@@ -30,8 +30,8 @@ ui <- fluidPage(
     "uniformity_scope",
     "Uniformity scope:",
     choices = c(
-      "All plates" = "all",
-      "Only plates with uniformity in plateID" = "uniformity_only"),
+      "Only plates with uniformity in plateID" = "uniformity_only",
+      "All plates" = "all",),
     selected = "uniformity_only"),
   actionButton("run", "Run Analysis", class = "btn-primary"),
   actionButton("clear", "Clear"),
