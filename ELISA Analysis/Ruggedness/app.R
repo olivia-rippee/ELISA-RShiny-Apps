@@ -5,6 +5,8 @@ library(DT)
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
+cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
+
 format_metric <- function(metric, x) {
   if (metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB")) {
     formatC(x, format = "f", digits = 1)
@@ -15,44 +17,7 @@ format_metric <- function(metric, x) {
   } else {
     formatC(x, format = "f", digits = 3)}}
 
-cv <- function(x) {
-  sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
-
-conf_level <- 0.90
-z_score <- qnorm(1 - (1 - conf_level) / 2)
-
-make_ruggedness_table <- function(data, type = c("min","max")) {
-  type <- match.arg(type)
-  data %>%
-    group_by(serial) %>%
-    summarise(
-      AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
-      StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
-      CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
-      
-      AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
-      StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
-      CV_ParmB = StdevParmB / AvgParmB * 100,
-      
-      AvgRP   = mean(rp, na.rm = TRUE),
-      StdevRP = sd(rp, na.rm = TRUE),
-      CV_RP   = StdevRP / AvgRP * 100,
-      
-      SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-      MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
-      Lower_ParmA = AvgParmA - MarginError_ParmA,
-      Upper_ParmA = AvgParmA + MarginError_ParmA,
-      MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
-      Lower_ParmB = AvgParmB - MarginError_ParmB,
-      Upper_ParmB = AvgParmB + MarginError_ParmB,
-      .groups = "drop") %>%
-    pivot_longer(-serial, names_to="Metric", values_to="Value") %>%
-    pivot_wider(names_from=serial, values_from=Value) %>%
-    mutate(across(-Metric, ~ mapply(format_metric, Metric, .x))) %>%
-    {ci_row <- tibble(Metric="CI", !!!setNames(rep(paste0(conf_level*100,"%"), ncol(.)-1), names(.)[-1]))
-    bind_rows(., ci_row)}}
-
-make_ruggedness_min_table <- function(data) {
+make_ruggedness_min_table <- function(data, conf_level, z_score) {
   if (nrow(data) == 0) return(NULL)
   ruggedness_serials <- unique(data$serial)
   ruggedness_min_summary <- data %>%
@@ -98,7 +63,7 @@ make_ruggedness_min_table <- function(data) {
       "MarginError_ParmA","Lower_ParmA","Upper_ParmA",
       "MarginError_ParmB","Lower_ParmB","Upper_ParmB")))}
 
-make_ruggedness_max_table <- function(data) {
+make_ruggedness_max_table <- function(data, conf_level, z_score) {
   if (nrow(data) == 0) return(NULL)
   ruggedness_serials <- unique(data$serial)
   ruggedness_max_summary <- data %>%
@@ -150,15 +115,27 @@ make_ruggedness_max_table <- function(data) {
 ui <- fluidPage(
   titlePanel("ELISA Analysis – Ruggedness"),
   fileInput("serialtesting_file", "Upload Serial Testing CSV"),
+  
   radioButtons(
     "ruggedness_scope",
     "Ruggedness scope:",
     choices = c(
       "Only plates with ruggedness, min, or max in plateID" = "ruggedness_only",
       "All plates" = "all")),
+  
+  numericInput(
+    "conf_level",
+    "Confidence level:",
+    value = 0.90,
+    min = 0.80,
+    max = 0.99,
+    step = 0.01),
+  uiOutput("conf_warning"),
+  
   actionButton("run", "Run Analysis", class = "btn-primary"),
   actionButton("clear", "Clear"),
   hr(),
+  
   conditionalPanel(
     condition = "input.run > 0",
     uiOutput("ruggedness_ui")))
@@ -169,7 +146,42 @@ ui <- fluidPage(
 # -------------------------------------------------
 server <- function(input, output, session) {
   
-  observeEvent(input$clear, session$reload())
+  # -----------------------------
+  # Valid confidence level cap
+  # -----------------------------
+  output$conf_warning <- renderUI({
+    req(input$conf_level)
+    
+    if (input$conf_level < 0.80 || input$conf_level > 0.99) {
+      div(
+        style = "color: #d9534f; font-size: 13px; margin-top: 4px; margin-bottom: 10px;",
+        "Confidence level must be between 0.80 and 0.99")
+    } else {NULL}})
+  
+  # -----------------------------
+  # UI visibility toggle
+  # -----------------------------
+  show_output <- reactiveVal(FALSE)
+  output$show_output <- reactive({show_output()})
+  outputOptions(output, "show_output", suspendWhenHidden = FALSE)
+  
+  # Run -> show output
+  observeEvent(input$run, {show_output(TRUE)})
+  
+  # Clear -> hide output
+  observeEvent(input$clear, {show_output(FALSE)})
+  
+  # -----------------------------
+  # Z-score reactive to confidence level
+  # -----------------------------
+  z_score <- reactive({
+    req(input$conf_level)
+    
+    validate(
+      need(input$conf_level >= 0.80 && input$conf_level <= 0.99,
+           "Invalid confidence level"))
+    
+    qnorm(1 - (1 - input$conf_level) / 2)})
   
   # -------------------
   # Data 
@@ -202,9 +214,9 @@ server <- function(input, output, session) {
     
     ruggedness_min <- ruggedness_plates %>% filter(grepl("min", plateID, ignore.case = TRUE))
     ruggedness_max <- ruggedness_plates %>% filter(grepl("max", plateID, ignore.case = TRUE))
-  
+    
     list(
-     ruggedness = ruggedness_plates,
+      ruggedness = ruggedness_plates,
       ruggedness_min = ruggedness_min,
       ruggedness_max = ruggedness_max)})
   
@@ -262,10 +274,10 @@ server <- function(input, output, session) {
         StdevRP = sd(rp, na.rm=TRUE),
         CV_RP = StdevRP / AvgRP * 100,
         SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-        MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+        MarginError_ParmA = z_score() * StdevParmA / sqrt(SampleSize),
         Lower_ParmA = AvgParmA - MarginError_ParmA,
         Upper_ParmA = AvgParmA + MarginError_ParmA,
-        MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+        MarginError_ParmB = z_score() * StdevParmB / sqrt(SampleSize),
         Lower_ParmB = AvgParmB - MarginError_ParmB,
         Upper_ParmB = AvgParmB + MarginError_ParmB,
         .groups="drop")
@@ -283,10 +295,10 @@ server <- function(input, output, session) {
         StdevRP = mean(StdevRP, na.rm=TRUE),
         CV_RP = StdevRP / AvgRP * 100,
         SampleSize = sum(SampleSize),
-        MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+        MarginError_ParmA = z_score() * StdevParmA / sqrt(SampleSize),
         Lower_ParmA = AvgParmA - MarginError_ParmA,
         Upper_ParmA = AvgParmA + MarginError_ParmA,
-        MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+        MarginError_ParmB = z_score() * StdevParmB / sqrt(SampleSize),
         Lower_ParmB = AvgParmB - MarginError_ParmB,
         Upper_ParmB = AvgParmB + MarginError_ParmB) %>%
       pivot_longer(everything(), names_to="Metric", values_to="Avg_Serials")
@@ -304,10 +316,10 @@ server <- function(input, output, session) {
         StdevRP = sd(rp, na.rm=TRUE),
         CV_RP = StdevRP / AvgRP * 100,
         SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-        MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+        MarginError_ParmA = z_score() * StdevParmA / sqrt(SampleSize),
         Lower_ParmA = AvgParmA - MarginError_ParmA,
         Upper_ParmA = AvgParmA + MarginError_ParmA,
-        MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+        MarginError_ParmB = z_score() * StdevParmB / sqrt(SampleSize),
         Lower_ParmB = AvgParmB - MarginError_ParmB,
         Upper_ParmB = AvgParmB + MarginError_ParmB) %>%
       pivot_longer(everything(), names_to="Metric", values_to="All")
@@ -323,7 +335,7 @@ server <- function(input, output, session) {
       mutate(across(-Metric, ~ mapply(format_metric, Metric, .x)))
     
     ci_row <- tibble(Metric="CI",
-                     !!!setNames(rep(paste0(conf_level*100,"%"), ncol(tbl)-1), names(tbl)[-1]))
+                     !!!setNames(rep(paste0(input$conf_level*100,"%"), ncol(tbl)-1), names(tbl)[-1]))
     tbl <- bind_rows(tbl, ci_row)
     
     datatable(tbl, options=list(dom="t", scrollX=TRUE), rownames=FALSE)})
@@ -337,14 +349,14 @@ server <- function(input, output, session) {
   output$ruggedness_min_table <- renderDT({
     df <- data_all()$ruggedness_min
     datatable(
-      make_ruggedness_min_table(df),
+      make_ruggedness_min_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"), 
       rownames=FALSE)})
   
   output$ruggedness_min_temp_table <- renderDT({
     df <- data_all()$ruggedness_min %>% filter(grepl("temp", plateID, ignore.case = TRUE))
     datatable(
-      make_ruggedness_min_table(df),
+      make_ruggedness_min_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"),
       rownames=FALSE,
       caption = "Min Temp")})
@@ -352,7 +364,7 @@ server <- function(input, output, session) {
   output$ruggedness_min_time_table <- renderDT({
     df <- data_all()$ruggedness_min %>% filter(grepl("time", plateID, ignore.case = TRUE))
     datatable(
-      make_ruggedness_min_table(df),
+      make_ruggedness_min_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"),
       rownames=FALSE,
       caption = "Min Time")})
@@ -360,14 +372,14 @@ server <- function(input, output, session) {
   output$ruggedness_max_table <- renderDT({
     df <- data_all()$ruggedness_max
     datatable(
-      make_ruggedness_max_table(df),
+      make_ruggedness_max_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"),
       rownames=FALSE)})
   
   output$ruggedness_max_temp_table <- renderDT({
     df <- data_all()$ruggedness_max %>% filter(grepl("temp", plateID, ignore.case = TRUE))
     datatable(
-      make_ruggedness_max_table(df),
+      make_ruggedness_max_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"),
       rownames=FALSE,
       caption = "Max Temp")})
@@ -375,7 +387,7 @@ server <- function(input, output, session) {
   output$ruggedness_max_time_table <- renderDT({
     df <- data_all()$ruggedness_max %>% filter(grepl("time", plateID, ignore.case = TRUE))
     datatable(
-      make_ruggedness_max_table(df),
+      make_ruggedness_max_table(df, input$conf_level, z_score()),
       options = list(scrollX = TRUE, dom = "t"),
       rownames=FALSE,
       caption = "Max Time")})}
