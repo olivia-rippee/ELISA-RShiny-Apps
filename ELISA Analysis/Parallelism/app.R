@@ -5,6 +5,8 @@ library(DT)
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
+cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
+
 format_metric <- function(metric, x) {
   if (metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB")) {
     formatC(x, format = "f", digits = 1)
@@ -15,32 +17,39 @@ format_metric <- function(metric, x) {
   } else {
     formatC(x, format = "f", digits = 3)}}
 
-cv <- function(x) {
-  sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
-
-conf_level <- 0.90
-z_score <- qnorm(1 - (1 - conf_level) / 2)
-
 
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
 ui <- fluidPage(
   titlePanel("ELISA Analysis – Parallelism"),
+  
   fileInput("dilution_file", "Upload Dilution CSV"),
   fileInput("layout_file", "Upload Layout CSV"),
   fileInput("serialtesting_file", "Upload Serial Testing CSV"),
+  
   radioButtons(
     "parallelism_scope",
     "Parallelism scope:",
     choices = c(
       "Only plates with parallelism in plateID" = "parallelism_only",
       "All plates" = "all")),
+  
+  numericInput(
+    "conf_level",
+    "Confidence level:",
+    value = 0.90,
+    min = 0.80,
+    max = 0.99,
+    step = 0.01),
+  uiOutput("conf_warning"),
+  
   actionButton("run", "Run Analysis", class = "btn-primary"),
   actionButton("clear", "Clear"),
   hr(),
+  
   conditionalPanel(
-    condition = "input.run > 0",
+    condition = "output.show_output == true",
     uiOutput("parallelism_ui")))
 
 
@@ -49,14 +58,43 @@ ui <- fluidPage(
 # -------------------------------------------------
 server <- function(input, output, session) {
   
-  observeEvent(input$clear, session$reload())
+  # -----------------------------
+  # Valid confidence level cap
+  # -----------------------------
+  output$conf_warning <- renderUI({
+    req(input$conf_level)
+    
+    if (input$conf_level < 0.80 || input$conf_level > 0.99) {
+      div(
+        style = "color: #d9534f; font-size: 13px; margin-top: 4px; margin-bottom: 10px;",
+        "Confidence level must be between 0.80 and 0.99")
+    } else {NULL}})
   
-  # -------------------
-  # Data 
-  # -------------------
+  # -----------------------------
+  # UI visibility toggle
+  # -----------------------------
+  show_output <- reactiveVal(FALSE)
+  output$show_output <- reactive({show_output()})
+  outputOptions(output, "show_output", suspendWhenHidden = FALSE)
+  
+  # Run -> show output
+  observeEvent(input$run, {show_output(TRUE)})
+  
+  # Clear -> hide output
+  observeEvent(input$clear, {show_output(FALSE)})
+  
+  # -----------------------------
+  # Z-score reactive to confidence level
+  # -----------------------------
+  z_score <- reactive({
+    qnorm(1 - (1 - input$conf_level) / 2)})
+  
+  # -----------------------------
+  # Data
+  # -----------------------------
   data_all <- eventReactive(input$run, {
     req(input$serialtesting_file, input$dilution_file, input$layout_file)
-      
+    
     serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
     
     serial_testing <- serial_testing %>%
@@ -78,8 +116,6 @@ server <- function(input, output, session) {
       } else {.}} %>%
       arrange(serialID)
     
-    # Dilution + layout
-    # -------------------
     dilution <- read.csv(input$dilution_file$datapath, stringsAsFactors = FALSE)
     layout   <- read.csv(input$layout_file$datapath, stringsAsFactors = FALSE)
     
@@ -127,10 +163,11 @@ server <- function(input, output, session) {
       } else NULL)})
   
   # -------------------------------------------------
-  # Parallelism UI
+  # UI output
   # -------------------------------------------------
   output$parallelism_ui <- renderUI({
-    req(input$run)
+    req(show_output())
+    
     tagList(
       h2("Parallelism"),
       h3("All Plate IDs"),
@@ -146,7 +183,7 @@ server <- function(input, output, session) {
       DTOutput("parallelism_by_serial"))})
   
   # -------------------------------------------------
-  # Parallelism tables
+  # Tables
   # -------------------------------------------------
   output$parallelism_plate_ids <- renderDT({
     datatable(
@@ -157,6 +194,7 @@ server <- function(input, output, session) {
   output$parallelism_all <- renderDT({
     df <- data_all()$parallelism
     serials <- unique(df$serial)
+    
     tbl <- df %>%
       group_by(serial) %>%
       summarise(
@@ -170,17 +208,19 @@ server <- function(input, output, session) {
         StdevRP = sd(rp, na.rm=TRUE),
         CV_RP = cv(rp),
         SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-        MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+        MarginError_ParmA = z_score() * StdevParmA / sqrt(SampleSize),
         Lower_ParmA = AvgParmA - MarginError_ParmA,
         Upper_ParmA = AvgParmA + MarginError_ParmA,
-        MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+        MarginError_ParmB = z_score() * StdevParmB / sqrt(SampleSize),
         Lower_ParmB = AvgParmB - MarginError_ParmB,
         Upper_ParmB = AvgParmB + MarginError_ParmB,
         .groups="drop") %>%
       pivot_longer(-serial, names_to="Metric", values_to="Value") %>%
       pivot_wider(names_from=serial, values_from=Value) %>%
       mutate(across(-Metric, ~ mapply(format_metric, Metric, .x))) %>%
-      bind_rows(tibble(Metric="CI", !!!setNames(rep(paste0(conf_level*100,"%"), length(serials)), serials)))
+      bind_rows(tibble(
+        Metric="CI",
+        !!!setNames(rep(paste0(input$conf_level * 100, "%"), length(serials)), serials)))
     
     datatable(tbl, options=list(dom="t", scrollX=TRUE), rownames = FALSE)})
   
@@ -194,27 +234,30 @@ server <- function(input, output, session) {
       StdevParmA <- sd(x$ParmA_ratio, na.rm=TRUE)
       AvgParmB <- mean(x$ParmB_ratio, na.rm=TRUE)
       StdevParmB <- sd(x$ParmB_ratio, na.rm=TRUE)
+      
       tibble(
         AvgParmA, StdevParmA, CV_ParmA=cv(x$ParmA_ratio),
         AvgParmB, StdevParmB, CV_ParmB=cv(x$ParmB_ratio),
         SampleSize,
-        MarginError_ParmA = z_score*StdevParmA/sqrt(SampleSize),
-        Lower_ParmA = AvgParmA - z_score*StdevParmA/sqrt(SampleSize),
-        Upper_ParmA = AvgParmA + z_score*StdevParmA/sqrt(SampleSize),
-        MarginError_ParmB = z_score*StdevParmB/sqrt(SampleSize),
-        Lower_ParmB = AvgParmB - z_score*StdevParmB/sqrt(SampleSize),
-        Upper_ParmB = AvgParmB + z_score*StdevParmB/sqrt(SampleSize))}
+        MarginError_ParmA = z_score()*StdevParmA/sqrt(SampleSize),
+        Lower_ParmA = AvgParmA - z_score()*StdevParmA/sqrt(SampleSize),
+        Upper_ParmA = AvgParmA + z_score()*StdevParmA/sqrt(SampleSize),
+        MarginError_ParmB = z_score()*StdevParmB/sqrt(SampleSize),
+        Lower_ParmB = AvgParmB - z_score()*StdevParmB/sqrt(SampleSize),
+        Upper_ParmB = AvgParmB + z_score()*StdevParmB/sqrt(SampleSize))}
     
-    blocks <- c(list("SerA+SerB" = summarize_block(df)),
-        setNames(lapply(detected_dilutions, 
-           function(d) summarize_block(filter(df, Dilution == d))),
-           paste0("SerA+SerB ", detected_dilutions)))
+    blocks <- c(
+      list("SerA+SerB" = summarize_block(df)),
+      setNames(lapply(detected_dilutions,
+                      function(d) summarize_block(filter(df, Dilution == d))),
+               paste0("SerA+SerB ", detected_dilutions)))
     
     tbl <- bind_cols(Metric = names(blocks[[1]]),
-           lapply(blocks, unlist)) %>%
+                     lapply(blocks, unlist)) %>%
       mutate(across(-Metric, ~ mapply(format_metric, Metric, .x))) %>%
-      bind_rows(tibble(Metric="CI", 
-                       !!!setNames(rep(paste0(conf_level*100,"%"), ncol(.)-1), names(.)[-1])))
+      bind_rows(tibble(
+        Metric="CI",
+        !!!setNames(rep(paste0(input$conf_level * 100, "%"), ncol(.)-1), names(.)[-1])))
     
     datatable(tbl, options=list(dom="t", scrollX=TRUE), rownames = FALSE)})
   
@@ -233,20 +276,23 @@ server <- function(input, output, session) {
         StdevRP = sd(rp, na.rm=TRUE),
         CV_RP = cv(rp),
         SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-        MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
+        MarginError_ParmA = z_score() * StdevParmA / sqrt(SampleSize),
         Lower_ParmA = AvgParmA - MarginError_ParmA,
         Upper_ParmA = AvgParmA + MarginError_ParmA,
-        MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
+        MarginError_ParmB = z_score() * StdevParmB / sqrt(SampleSize),
         Lower_ParmB = AvgParmB - MarginError_ParmB,
-        Upper_ParmB = AvgParmB + z_score*StdevParmB/sqrt(SampleSize),
+        Upper_ParmB = AvgParmB + z_score()*StdevParmB/sqrt(SampleSize),
         .groups="drop") %>%
       unite(Group, serial, Dilution, sep=" ") %>%
       pivot_longer(-Group, names_to="Metric", values_to="Value") %>%
       pivot_wider(names_from=Group, values_from=Value) %>%
       mutate(across(-Metric, ~ mapply(format_metric, Metric, .x))) %>%
-      bind_rows(tibble(Metric="CI", !!!setNames(rep(paste0(conf_level*100,"%"), ncol(.)-1), names(.)[-1])))
+      bind_rows(tibble(
+        Metric="CI",
+        !!!setNames(rep(paste0(input$conf_level * 100, "%"), ncol(.)-1), names(.)[-1])))
     
     datatable(df, options=list(dom="t", scrollX=TRUE), rownames = FALSE)})}
+
 
 # -------------------------------------------------
 # Run app
