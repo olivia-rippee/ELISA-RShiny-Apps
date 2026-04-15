@@ -1,14 +1,13 @@
 library(shiny)
 library(tidyverse)
 library(DT)
-library(flextable)
 library(patchwork)
 library(gridExtra)
 
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
-cv <- function(x) sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100
+cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
 
 format_metric <- function(metric, x) {
   if (metric %in% c("Lower_ParmA","Upper_ParmA","Lower_ParmB","Upper_ParmB")) {
@@ -23,37 +22,6 @@ format_metric <- function(metric, x) {
 conf_level <- 0.90
 z_score <- qnorm(1 - (1 - conf_level) / 2)
 
-make_ruggedness_table <- function(data, type = c("min","max")) {
-  type <- match.arg(type)
-  data %>%
-    group_by(serial) %>%
-    summarise(
-      AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
-      StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
-      CV_ParmA = StdevParmA / AvgParmA * 100,
-      
-      AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
-      StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
-      CV_ParmB = StdevParmB / AvgParmB * 100,
-      
-      AvgRP   = mean(rp, na.rm = TRUE),
-      StdevRP = sd(rp, na.rm = TRUE),
-      CV_RP   = StdevRP / AvgRP * 100,
-      
-      SampleSize = sum(!is.na(ParmA_ratio) & !is.na(ParmB_ratio)),
-      MarginError_ParmA = z_score * StdevParmA / sqrt(SampleSize),
-      Lower_ParmA = AvgParmA - MarginError_ParmA,
-      Upper_ParmA = AvgParmA + MarginError_ParmA,
-      MarginError_ParmB = z_score * StdevParmB / sqrt(SampleSize),
-      Lower_ParmB = AvgParmB - MarginError_ParmB,
-      Upper_ParmB = AvgParmB + MarginError_ParmB,
-      .groups = "drop") %>%
-    pivot_longer(-serial, names_to="Metric", values_to="Value") %>%
-    pivot_wider(names_from=serial, values_from=Value) %>%
-    mutate(across(-Metric, ~ mapply(format_metric, Metric, .x))) %>%
-    {ci_row <- tibble(Metric="CI", !!!setNames(rep(paste0(conf_level*100,"%"), ncol(.)-1), names(.)[-1]))
-      bind_rows(., ci_row)}}
-
 make_ruggedness_min_table <- function(data) {
   req(nrow(data) > 0)
   ruggedness_serials <- unique(data$serial)
@@ -62,7 +30,7 @@ make_ruggedness_min_table <- function(data) {
     summarise(
       AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
       StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
-      CV_ParmA = StdevParmA / AvgParmA * 100,
+      CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
       AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
       StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
       CV_ParmB = StdevParmB / AvgParmB * 100,
@@ -108,7 +76,7 @@ make_ruggedness_max_table <- function(data) {
     summarise(
       AvgParmA = mean(ParmA_ratio, na.rm = TRUE),
       StdevParmA = sd(ParmA_ratio, na.rm = TRUE),
-      CV_ParmA = StdevParmA / AvgParmA * 100,
+      CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
       AvgParmB = mean(ParmB_ratio, na.rm = TRUE),
       StdevParmB = sd(ParmB_ratio, na.rm = TRUE),
       CV_ParmB = StdevParmB / AvgParmB * 100,
@@ -184,31 +152,49 @@ ui <- fluidPage(
     actionButton("clear", "Clear"))),
   
   hr(),
-  
+
   tabsetPanel(
-    tabPanel("Uniformity",
+    tabPanel("Uniformity", 
              conditionalPanel(
                condition = "input.analyses.includes('uniformity')",
+               radioButtons(inputId = "uniformity_scope", 
+                            label = "Uniformity analysis scope:", 
+                            choices = c(
+                              "Only plates with uniformity in plateID" = "uniformity_only", 
+                              "All plates" = "all"),
+                            selected = "uniformity_only"),
                uiOutput("uniformity_ui")),
              conditionalPanel(
-               condition = "!input.analyses.includes('uniformity')",
+               condition = "!input.analyses.includes('uniformity')", 
                h4("Uniformity not selected."))),
-    
-    tabPanel("Parallelism",
-             conditionalPanel(
-               condition = "input.analyses.includes('parallelism')",
-               uiOutput("parallelism_ui")),
-             conditionalPanel(
-               condition = "!input.analyses.includes('parallelism')",
-               h4("Parallelism not selected."))),
-    
-    tabPanel("Ruggedness",
-             conditionalPanel(
-               condition = "input.analyses.includes('ruggedness')",
-               uiOutput("ruggedness_ui")),
-             conditionalPanel(
-               condition = "!input.analyses.includes('ruggedness')",
-               h4("Ruggedness not selected.")))))
+
+  tabPanel("Parallelism", 
+           conditionalPanel(
+             condition = "input.analyses.includes('parallelism')",
+             radioButtons(inputId = "parallelism_scope", 
+                          label = "Parallelism analysis scope:", 
+                          choices = c(
+                            "Only plates with parallelism in plateID" = "parallelism_only",
+                            "All plates" = "all"), 
+                          selected = "parallelism_only"),
+             uiOutput("parallelism_ui")),
+           conditionalPanel(
+             condition = "!input.analyses.includes('parallelism')", 
+             h4("Parallelism not selected."))),
+  
+  tabPanel("Ruggedness", 
+           conditionalPanel(
+             condition = "input.analyses.includes('ruggedness')",
+             radioButtons(inputId = "ruggedness_scope", 
+                          label = "Ruggedness analysis scope:", 
+                          choices = c(
+                            "Only plates with ruggedness, min, or max in plateID" = "ruggedness_only",
+                            "All plates" = "all"), 
+                          selected = "ruggedness_only"),
+             uiOutput("ruggedness_ui")),
+           conditionalPanel(
+             condition = "!input.analyses.includes('ruggedness')", 
+             h4("Ruggedness not selected.")))))
 
 
 # -------------------------------------------------
@@ -245,8 +231,11 @@ server <- function(input, output, session) {
       ODs <- read.csv(input$od_file$datapath, stringsAsFactors = FALSE)
       colnames(ODs) <- sub("^X(?=\\d)", "", colnames(ODs), perl = TRUE)
       
+      # Conditionally filter based on user choice
       uniformity_plates <- ODs %>%
-        filter(grepl("Uniformity", plateID, ignore.case = TRUE)) %>%
+        {if (input$uniformity_scope == "uniformity_only") {
+            filter(., grepl("uniformity", plateID, ignore.case = TRUE))
+          } else {.}} %>%
         group_by(plateID) %>%
         mutate(Row = LETTERS[row_number()]) %>%
         ungroup()
@@ -369,8 +358,10 @@ server <- function(input, output, session) {
           serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
       
       parallelism_plates <- serial_testing %>%
-        filter(grepl("Parallelism", plateID, TRUE),
-               serial %in% c("SerA","SerB","PC")) %>%
+        {if (input$parallelism_scope == "parallelism_only") {
+            filter(., grepl("Parallelism", plateID, ignore.case = TRUE),
+                   serial %in% c("SerA","SerB","PC"))
+          } else {.}} %>%
         arrange(serialID)
       
       # Dilution + layout
@@ -435,12 +426,14 @@ server <- function(input, output, session) {
           serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
       
       ruggedness_plates <- serial_testing %>%
-        filter(grepl("min|max|ruggedness", plateID, TRUE),
-               serial %in% c("120","SerB","PC")) %>%
+        {if (input$ruggedness_scope == "ruggedness_only") {
+            filter(., grepl("min|max|ruggedness", plateID, ignore.case = TRUE),
+                   serial %in% c("120","SerB","PC"))
+          } else {.}} %>%
         arrange(serialID)
       
-      ruggedness_min <- ruggedness_plates %>% filter(grepl("min", plateID, TRUE))
-      ruggedness_max <- ruggedness_plates %>% filter(grepl("max", plateID, TRUE))
+      ruggedness_min <- ruggedness_plates %>% filter(grepl("min", plateID, ignore.case = TRUE))
+      ruggedness_max <- ruggedness_plates %>% filter(grepl("max", plateID, ignore.case = TRUE))
       
     } else {ruggedness_plates <- ruggedness_min <- ruggedness_max <- NULL}
     
@@ -539,7 +532,6 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   # Uniformity plots
   # -------------------------------------------------
-  
   output$uniformity_plate_ids <- renderDT({
     datatable(
       data_all()$uniformity_plates %>% distinct(plateID) %>% arrange(plateID),
@@ -622,8 +614,8 @@ server <- function(input, output, session) {
           
           heatmap_plot / stats_plot +
             plot_layout(heights = c(10, 2))})})})})
-  
-  
+
+
   # Statistics Table
   # -----------------------------
   output$stats_table <- renderDT({
@@ -646,7 +638,7 @@ server <- function(input, output, session) {
     col_levels <- levels(heatmap_df$Col)
     
     line_graphs_data <- heatmap_df %>%
-      filter(Row == "Avg" | Col == "Avg") %>%
+      filter((Row == "Avg" | Col == "Avg") & !(Row == "Avg" & Col == "Avg")) %>%
       mutate(
         Row = factor(Row, levels = row_levels),
         Col_num = as.numeric(Col),
@@ -828,7 +820,7 @@ server <- function(input, output, session) {
       summarise(
         AvgParmA = mean(ParmA_ratio, na.rm=TRUE),
         StdevParmA = sd(ParmA_ratio, na.rm=TRUE),
-        CV_ParmA = StdevParmA / AvgParmA * 100,
+        CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
         AvgParmB = mean(ParmB_ratio, na.rm=TRUE),
         StdevParmB = sd(ParmB_ratio, na.rm=TRUE),
         CV_ParmB = StdevParmB / AvgParmB * 100,
@@ -849,7 +841,7 @@ server <- function(input, output, session) {
       summarise(
         AvgParmA = mean(AvgParmA, na.rm=TRUE),
         StdevParmA = mean(StdevParmA, na.rm=TRUE),
-        CV_ParmA = StdevParmA / AvgParmA * 100,
+        CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
         AvgParmB = mean(AvgParmB, na.rm=TRUE),
         StdevParmB = mean(StdevParmB, na.rm=TRUE),
         CV_ParmB = StdevParmB / AvgParmB * 100,
@@ -870,7 +862,7 @@ server <- function(input, output, session) {
       summarise(
         AvgParmA = mean(ParmA_ratio, na.rm=TRUE),
         StdevParmA = sd(ParmA_ratio, na.rm=TRUE),
-        CV_ParmA = StdevParmA / AvgParmA * 100,
+        CV_ParmA = ifelse(AvgParmA == 0, NA, StdevParmA / AvgParmA * 100),
         AvgParmB = mean(ParmB_ratio, na.rm=TRUE),
         StdevParmB = sd(ParmB_ratio, na.rm=TRUE),
         CV_ParmB = StdevParmB / AvgParmB * 100,
@@ -959,4 +951,3 @@ server <- function(input, output, session) {
 # Run app
 # -------------------------------------------------
 shinyApp(ui, server)
-
