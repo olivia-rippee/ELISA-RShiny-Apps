@@ -8,7 +8,7 @@ library(DT)
 # ------------------
 step_sequences <- list(
   Capture = c("Capture", "Block", "Antigen", "Detector", "Conjugate", "Substrate", "Stop/Read"),
-  `Direct Bind` = c("Antigen", "Block", "Antibody", "Conjugate", "Substrate", "Stop/Read"),
+  `Direct Bind` = c("Antigen", "Block", "Detector", "Conjugate", "Substrate", "Stop/Read"),
   `CpG Hybridization` = c("Capture", "Block", "Thermocycle", "Detector+Antigen", "Conjugate", "Substrate", "Stop/Read"))
 
 # Default durations
@@ -22,11 +22,11 @@ default_durations <- list(
     Substrate = c(hr=0, min=10, transfer=NA),
     `Stop/Read` = c(hr=0, min=5, transfer=NA)),
   `Direct Bind` = list(
-    Antigen = c(hr=21, min=0, transfer=0),
-    Block = c(hr=1, min=0, transfer=0),
-    Antibody = c(hr=4, min=0, transfer=0),
-    Conjugate = c(hr=1, min=0, transfer=0),
-    Substrate = c(hr=0, min=10, transfer=NA),
+    Antigen = c(hr=23, min=0, transfer=0),
+    Block = c(hr=1, min=30, transfer=0),
+    Detector = c(hr=4, min=0, transfer=0),
+    Conjugate = c(hr=1, min=30, transfer=0),
+    Substrate = c(hr=0, min=15, transfer=NA),
     `Stop/Read` = c(hr=0, min=5, transfer=NA)),
   `CpG Hybridization` = list(
     Capture = c(hr=19, min=0, transfer=0),
@@ -177,18 +177,39 @@ server <- function(input, output, session) {
       df <- schedule_data()
       if(is.null(df)) return(NULL)
       
-      ics_lines <- c("BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//YourApp//ELISA Scheduler//EN")
+      ics_lines <- c("BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ELISA Timepoints Calculator//Multi//EN")
       
       for(i in 1:nrow(df)){
-        event_name <- paste0(df$AssayLabel[i]," - ", df$Step[i])
+        assay_num <- df$AssayNumber[i]
+        step_name <- df$Step[i]
+        
+        hr <- input[[paste0("hr_", assay_num, "_", step_name)]]
+        mn <- input[[paste0("min_", assay_num, "_", step_name)]]
+        
+        duration_label <- if (hr > 0 && mn > 0) {
+          paste0(hr, " hr ", mn, " min")
+        } else if (hr > 0) {
+          paste0(hr, " hr")
+        } else {
+          paste0(mn, " min")}
+        
+        event_name <- paste0(df$AssayLabel[i], ": ", step_name, " (", duration_label, ")")
+        
         start_utc <- format(df$StartTime[i], "%Y%m%dT%H%M%S")
         end_utc <- format(df$StartTime[i] + minutes(30), "%Y%m%dT%H%M%S")
-        ics_event <- c("BEGIN:VEVENT",
-                       paste0("SUMMARY:", event_name),
-                       paste0("DTSTART:", start_utc),
-                       paste0("DTEND:", end_utc),
-                       paste0("DESCRIPTION:Step: ", df$Step[i]),
-                       "END:VEVENT")
+        ics_event <- c(
+          "BEGIN:VEVENT",
+          paste0("SUMMARY:", event_name),
+          paste0("DTSTART:", start_utc),
+          paste0("DTEND:", end_utc),
+          
+          # 15-minute reminder notification
+          "BEGIN:VALARM",
+          "TRIGGER:-PT15M",
+          "ACTION:DISPLAY",
+          "DESCRIPTION:Reminder",
+          "END:VALARM",
+          "END:VEVENT")
         ics_lines <- c(ics_lines,ics_event)}
       ics_lines <- c(ics_lines,"END:VCALENDAR")
       writeLines(ics_lines,file)})}
