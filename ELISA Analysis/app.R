@@ -138,15 +138,23 @@ ui <- fluidPage(
     conditionalPanel(
       condition = "input.analyses.includes('parallelism')",
       fileInput("dilution_file", "Upload Dilution CSV"),
-      fileInput("layout_file", "Upload Layout CSV")),
+      p("Dilution file needs columns 1-12 and plateID."),
+      br(),
+      fileInput("layout_file", "Upload Layout CSV"),
+      p("Layout file needs columns 1-12 and plateID."),
+      br()),
                   
     conditionalPanel(
       condition = "input.analyses.includes('uniformity')",
-      fileInput("od_file", "Upload OD CSV")),
+      fileInput("od_file", "Upload OD CSV"),
+      p("OD file needs columns 1-12 and plateID."),
+      br()),
                   
     conditionalPanel(
       condition = "input.analyses.includes('parallelism') || input.analyses.includes('ruggedness')",
-      fileInput("serialtesting_file", "Upload SerialTesting CSV")),
+      fileInput("serialtesting_file", "Upload SerialTesting CSV"),
+      p("Serial testing file needs columns plateID, serialID, ParmB_ratio, ParmA_ratio, rp, and avgBlank"),
+      br()),
                   
     actionButton("run", "Run Analysis", class = "btn-primary"),
     actionButton("clear", "Clear"))),
@@ -465,7 +473,7 @@ server <- function(input, output, session) {
       h2("Uniformity"),
       h3("All Plate IDs"),
       DTOutput("uniformity_plate_ids"),
-      h3("Uniformity - Heatmap All Plates"),
+      h3("Uniformity (Average Over All Plates)"),
       plotOutput("heatmap_all", height="500px"),
       hr(),
       h3("Uniformity - Heatmap by Plate"),
@@ -548,17 +556,24 @@ server <- function(input, output, session) {
     
     heatmap_plot <- ggplot(df_avg, aes(Col, Row, fill = OD)) +
       geom_tile(color = "white") +
-      geom_text(aes(label = round(OD, 3)), size = 5) +
+      geom_text(aes(label = round(OD, 2)), size = 5) +
       geom_hline(yintercept = 1.5, linewidth = 1) +
       geom_vline(xintercept = 12.5, linewidth = 1) +
       coord_fixed() +
       scale_fill_gradient(low = "steelblue", high = "orange2") +
       scale_x_discrete(position = "top", expand = c(0,0)) +
       scale_y_discrete(expand = c(0,0)) +
-      labs(title = "All Plates", fill = "Avg OD") +
+      labs(title = "All Plates") +
       theme_minimal() +
-      theme(panel.grid = element_blank())
-    
+      theme(panel.grid = element_blank(),
+            axis.text.x = element_text(size = 14),
+            axis.text.y = element_text(size = 14),
+            axis.title.x = element_text(size = 16),
+            axis.title.y = element_text(size = 16),
+            legend.text = element_text(size = 12),
+            legend.title = element_text(size = 14),
+            plot.title = element_text(size = 16))
+              
     stats_plot <- ggplot() +
       annotate("text", x = 0, y = 1,
                label = format_plate_stats(stats),
@@ -574,7 +589,7 @@ server <- function(input, output, session) {
   output$heatmap_by_plate <- renderUI({
     req(data_all())
     lapply(names(data_all()$heatmap_list), function(p) {
-      plotOutput(paste0("hm_", p), height = "400px")}) %>% 
+      plotOutput(paste0("hm_", p), height = "500px")}) %>% 
       tagList()})
   
   observe({
@@ -594,7 +609,7 @@ server <- function(input, output, session) {
           
           heatmap_plot <- ggplot(df, aes(Col, Row, fill = OD)) +
             geom_tile(color = "white") +
-            geom_text(aes(label = round(OD, 3)), size = 5) +
+            geom_text(aes(label = round(OD, 2)), size = 5) +
             geom_hline(yintercept = 1.5, linewidth = 1) +
             geom_vline(xintercept = 12.5, linewidth = 1) +
             coord_fixed() +
@@ -603,7 +618,14 @@ server <- function(input, output, session) {
             scale_y_discrete(expand = c(0, 0)) +
             labs(title = plate, fill = "OD") +
             theme_minimal() +
-            theme(panel.grid = element_blank())
+            theme(panel.grid = element_blank(),
+                  axis.text.x = element_text(size = 14),
+                  axis.text.y = element_text(size = 14),
+                  axis.title.x = element_text(size = 16),
+                  axis.title.y = element_text(size = 16),
+                  legend.text = element_text(size = 12),
+                  legend.title = element_text(size = 14),
+                  plot.title = element_text(size = 16))
           
           stats_plot <- ggplot() +
             annotate("text", x = 0, y = 1,
