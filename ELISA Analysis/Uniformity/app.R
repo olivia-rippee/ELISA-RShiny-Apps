@@ -6,8 +6,7 @@ library(patchwork)
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
-cv <- function(x) {
-  sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
+cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
 
 format_plate_stats <- function(stats_row) {
   paste0(
@@ -25,13 +24,15 @@ format_plate_stats <- function(stats_row) {
 ui <- fluidPage(
   titlePanel("ELISA Analysis - Uniformity"),
   fileInput("od_file", "Upload OD CSV"),
+  p("OD file needs columns 1-12 and plateID."),
+  br(),
 
   radioButtons(
     "uniformity_scope",
     "Uniformity scope:",
     choices = c(
       "Only plates with uniformity in plateID" = "uniformity_only",
-      "All plates" = "all",),
+      "All plates" = "all"),
     selected = "uniformity_only"),
   actionButton("run", "Run Analysis", class = "btn-primary"),
   actionButton("clear", "Clear"),
@@ -210,17 +211,28 @@ server <- function(input, output, session) {
     
     p1 <- ggplot(df, aes(Col, Row, fill = OD)) +
       geom_tile(color = "white") +
-      geom_text(aes(label = round(OD, 3)), size = 4) +
+      geom_text(aes(label = round(OD, 2)), size = 5) +
+      geom_hline(yintercept = 1.5, linewidth = 1) +
+      geom_vline(xintercept = 12.5, linewidth = 1) +
       coord_fixed() +
       scale_fill_gradient(low = "steelblue", high = "orange") +
+      scale_x_discrete(position = "top", expand = c(0,0)) +
+      scale_y_discrete(expand = c(0,0)) +
       theme_minimal() +
-      theme(panel.grid = element_blank()) +
+      theme(panel.grid = element_blank(),
+            axis.text.x = element_text(size = 14),
+            axis.text.y = element_text(size = 14),
+            axis.title.x = element_text(size = 16),
+            axis.title.y = element_text(size = 16),
+            legend.text = element_text(size = 12),
+            legend.title = element_text(size = 14),
+            plot.title = element_text(size = 16)) +
       labs(title = "All Plates")
     
     p2 <- ggplot() +
       annotate("text", x = 0, y = 1,
                label = format_plate_stats(stats),
-               hjust = 0, vjust = 1) +
+               hjust = 0, vjust = 1, size = 5) +
       theme_void()
     
     p1 / p2 + plot_layout(heights = c(10, 2))})
@@ -252,12 +264,22 @@ server <- function(input, output, session) {
           
           p1 <- ggplot(df, aes(Col, Row, fill = OD)) +
             geom_tile(color = "white") +
-            geom_text(aes(label = round(OD, 3)), size = 4) +
+            geom_text(aes(label = round(OD, 2)), size = 5) +
+            geom_hline(yintercept = 1.5, linewidth = 1) +
+            geom_vline(xintercept = 12.5, linewidth = 1) +
             coord_fixed() +
-            scale_fill_gradient(low = "steelblue", high = "orange") +
+            scale_fill_gradient(low = "steelblue", high = "orange2") +
+            scale_x_discrete(position = "top", expand = c(0, 0)) +
+            scale_y_discrete(expand = c(0, 0)) +
+            labs(title = plate, fill = "OD") +
             theme_minimal() +
-            theme(panel.grid = element_blank()) +
-            labs(title = plate)
+            theme(panel.grid = element_blank(),
+                  axis.text.x = element_text(size = 14),
+                  axis.text.y = element_text(size = 14),
+                  axis.title.x = element_text(size = 16),
+                  axis.title.y = element_text(size = 16),
+                  legend.text = element_text(size = 12),
+                  legend.title = element_text(size = 14))
           
           p2 <- ggplot() +
             annotate("text", x = 0, y = 1,
