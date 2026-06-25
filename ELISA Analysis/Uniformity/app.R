@@ -6,6 +6,21 @@ library(patchwork)
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
+read_uploaded_file <- function(file_input) {
+  file_ext <- tolower(tools::file_ext(file_input$name))
+  
+  df <- if (file_ext == "csv") {
+    read.csv(file_input$datapath, stringsAsFactors = FALSE)
+  } else if (file_ext %in% c("xlsx", "xls")) {
+    as.data.frame(read_excel(file_input$datapath),
+                  stringsAsFactors = FALSE)
+  } else {
+    stop("Unsupported file type. Please upload a CSV or Excel file.")}
+  
+  # Standardize column names
+  names(df) <- make.names(names(df))
+  df}
+
 cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
 
 format_plate_stats <- function(stats_row) {
@@ -23,9 +38,10 @@ format_plate_stats <- function(stats_row) {
 # -------------------------------------------------
 ui <- fluidPage(
   titlePanel("ELISA Analysis - Uniformity"),
-  fileInput("od_file", "Upload OD CSV"),
-  p("OD file needs columns 1-12 and plateID."),
-  br(),
+  
+  # OD
+  h5(strong(style = "width:100%;", "Upload OD File (.csv or .xlsx) with columns 1-12 and plateID")),
+  fileInput("od_file", label = NULL, accept = c(".csv", ".xlsx")),
 
   radioButtons(
     "uniformity_scope",
@@ -68,7 +84,7 @@ server <- function(input, output, session) {
   data_all <- eventReactive(input$run, {
     req(input$od_file)
     
-    ODs <- read.csv(input$od_file$datapath, stringsAsFactors = FALSE)
+    ODs <- read_uploaded_file(input$od_file)
     colnames(ODs) <- sub("^X(?=\\d)", "", colnames(ODs), perl = TRUE)
     
     # Optional filtering
