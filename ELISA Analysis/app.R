@@ -7,6 +7,17 @@ library(gridExtra)
 # -------------------------------------------------
 # Helper functions
 # -------------------------------------------------
+read_uploaded_file <- function(file_input) {
+  file_ext <- tolower(tools::file_ext(file_input$name))
+  
+  if (file_ext == "csv") {
+    read.csv(file_input$datapath, stringsAsFactors = FALSE)
+  } else if (file_ext %in% c("xlsx", "xls")) {
+    as.data.frame(read_excel(file_input$datapath),
+      stringsAsFactors = FALSE)
+  } else {
+    stop("Unsupported file type. Please upload a CSV or Excel file.")}}
+
 cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
 
 format_metric <- function(metric, x) {
@@ -134,28 +145,36 @@ ui <- fluidPage(
   fluidRow(column(12,
     checkboxGroupInput("analyses", "Select analyses to run:",
                     choices = c("Uniformity"  = "uniformity", "Parallelism" = "parallelism", "Ruggedness"  = "ruggedness")),
-                  
+    br(),
+    
     conditionalPanel(
       condition = "input.analyses.includes('parallelism')",
-      fileInput("dilution_file", "Upload Dilution CSV"),
-      p("Dilution file needs columns 1-12 and plateID."),
-      br(),
-      fileInput("layout_file", "Upload Layout CSV"),
-      p("Layout file needs columns 1-12 and plateID."),
-      br()),
-                  
+      
+      # Dilution
+      h5(strong(style = "width:100%;", "Upload Dilution File (.csv or .xlsx) with columns 1-12 and plateID")),
+      fileInput("dilution_file", label = NULL, accept = c(".csv", ".xlsx")),
+      
+      # Layout
+      h5(strong(style = "width:100%;", "Upload Layout File (.csv or .xlsx) with columns 1-12 and plateID")),
+      fileInput("layout_file", label = NULL, accept = c(".csv", ".xlsx"))),
+  
+    
     conditionalPanel(
       condition = "input.analyses.includes('uniformity')",
-      fileInput("od_file", "Upload OD CSV"),
-      p("OD file needs columns 1-12 and plateID."),
-      br()),
-                  
+      
+      # OD
+      h5(strong(style = "width:100%;", "Upload OD File (.csv or .xlsx) with columns 1-12 and plateID")),
+      fileInput("od_file", label = NULL, accept = c(".csv", ".xlsx"))),
+              
+        
     conditionalPanel(
       condition = "input.analyses.includes('parallelism') || input.analyses.includes('ruggedness')",
-      fileInput("serialtesting_file", "Upload SerialTesting CSV"),
-      p("Serial testing file needs columns plateID, serialID, ParmB_ratio, ParmA_ratio, rp, and avgBlank"),
-      br()),
-                  
+      
+      # Serial testing
+      h5(strong(style = "width:100%;", "Upload SerialTesting File (.csv or .xlsx) 
+                with columns columns plateID, serialID, ParmB_ratio, ParmA_ratio, and rp")),
+      fileInput("serialtesting_file", label = NULL, accept = c(".csv", ".xlsx"))),
+    
     actionButton("run", "Run Analysis", class = "btn-primary"),
     actionButton("clear", "Clear"))),
   
@@ -236,7 +255,8 @@ server <- function(input, output, session) {
     # -------------------
     if ("uniformity" %in% input$analyses) {
       
-      ODs <- read.csv(input$od_file$datapath, stringsAsFactors = FALSE)
+      ODs <- read_uploaded_file(input$od_file)
+      
       colnames(ODs) <- sub("^X(?=\\d)", "", colnames(ODs), perl = TRUE)
       
       # Conditionally filter based on user choice
@@ -351,8 +371,12 @@ server <- function(input, output, session) {
     # -------------------
     if ("parallelism" %in% input$analyses) {
       
-      serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
-    
+      # Read files
+      # -----------
+      serial_testing <- read_uploaded_file(input$serialtesting_file)
+      dilution <- read_uploaded_file(input$dilution_file)
+      layout <- read_uploaded_file(input$layout_file)
+      
       serial_testing <- serial_testing %>%
         mutate(
           serial = case_when(
@@ -365,6 +389,8 @@ server <- function(input, output, session) {
             TRUE ~ NA_character_),
           serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
       
+      # Plate list
+      # ----------
       parallelism_plates <- serial_testing %>%
         {if (input$parallelism_scope == "parallelism_only") {
             filter(., grepl("Parallelism", plateID, ignore.case = TRUE),
@@ -374,9 +400,6 @@ server <- function(input, output, session) {
       
       # Dilution + layout
       # -------------------
-      dilution <- read.csv(input$dilution_file$datapath, stringsAsFactors = FALSE)
-      layout   <- read.csv(input$layout_file$datapath, stringsAsFactors = FALSE)
-      
       dilution <- dilution %>%
         group_by(plateID) %>%
         mutate(RowLetter = LETTERS[row_number()]) %>%
@@ -419,7 +442,7 @@ server <- function(input, output, session) {
     # Ruggedness plates
     # -------------------
     if ("ruggedness" %in% input$analyses) {
-      serial_testing <- read.csv(input$serialtesting_file$datapath, stringsAsFactors = FALSE)
+      serial_testing <- read_uploaded_file(input$serialtesting_file)
       
       serial_testing <- serial_testing %>%
         mutate(
