@@ -1,5 +1,6 @@
 library(shiny)
 library(tidyverse)
+library(readxl)
 library(DT)
 library(patchwork)
 library(gridExtra)
@@ -10,13 +11,17 @@ library(gridExtra)
 read_uploaded_file <- function(file_input) {
   file_ext <- tolower(tools::file_ext(file_input$name))
   
-  if (file_ext == "csv") {
+  df <- if (file_ext == "csv") {
     read.csv(file_input$datapath, stringsAsFactors = FALSE)
   } else if (file_ext %in% c("xlsx", "xls")) {
     as.data.frame(read_excel(file_input$datapath),
-      stringsAsFactors = FALSE)
+                  stringsAsFactors = FALSE)
   } else {
-    stop("Unsupported file type. Please upload a CSV or Excel file.")}}
+    stop("Unsupported file type. Please upload a CSV or Excel file.")}
+  
+  # Standardize column names
+  names(df) <- make.names(names(df))
+  df}
 
 cv <- function(x) {sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100}
 
@@ -451,14 +456,12 @@ server <- function(input, output, session) {
       serial_testing <- serial_testing %>%
         mutate(
           serial = case_when(
-            grepl("-120", serialID, TRUE) ~ "120",
-            grepl("SERA", serialID, TRUE) ~ "SerA",
-            grepl("SERB", serialID, TRUE) ~ "SerB",
-            grepl("PC",   serialID, TRUE) ~ "PC",
-            grepl("NC",   serialID, TRUE) ~ "NC",
-            grepl("MR",   serialID, TRUE) ~ "MR",
+            serialID == input$`120_serial` ~ "120",
+            serialID == input$SerA_serial  ~ "SerA",
+            serialID == input$SerB_serial  ~ "SerB",
+            serialID == input$PC_serial    ~ "PC",
             TRUE ~ NA_character_),
-          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+          serial = factor(serial, levels = c("120","SerA","SerB","PC")))
       
       # Plate list
       # ----------
@@ -493,14 +496,12 @@ server <- function(input, output, session) {
         left_join(dilution_long, by = c("plateID","RowLetter","Column")) %>%
         mutate(
           serial = case_when(
-            grepl("-120", serialID, TRUE) ~ "120",
-            grepl("SERA", serialID, TRUE) ~ "SerA",
-            grepl("SERB", serialID, TRUE) ~ "SerB",
-            grepl("PC",   serialID, TRUE) ~ "PC",
-            grepl("NC",   serialID, TRUE) ~ "NC",
-            grepl("MR",   serialID, TRUE) ~ "MR",
+            serialID == input$`120_serial` ~ "120",
+            serialID == input$SerA_serial  ~ "SerA",
+            serialID == input$SerB_serial  ~ "SerB",
+            serialID == input$PC_serial    ~ "PC",
             TRUE ~ NA_character_),
-          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+          serial = factor(serial, levels = c("120","SerA","SerB","PC")))
       
       start_dilutions <- well_mapping %>%
         group_by(plateID, serialID) %>%
@@ -518,14 +519,12 @@ server <- function(input, output, session) {
       serial_testing <- serial_testing %>%
         mutate(
           serial = case_when(
-            grepl("-120", serialID, TRUE) ~ "120",
-            grepl("SERA", serialID, TRUE) ~ "SerA",
-            grepl("SERB", serialID, TRUE) ~ "SerB",
-            grepl("PC",   serialID, TRUE) ~ "PC",
-            grepl("NC",   serialID, TRUE) ~ "NC",
-            grepl("MR",   serialID, TRUE) ~ "MR",
+            serialID == input$`120_serial` ~ "120",
+            serialID == input$SerA_serial  ~ "SerA",
+            serialID == input$SerB_serial  ~ "SerB",
+            serialID == input$PC_serial    ~ "PC",
             TRUE ~ NA_character_),
-          serial = factor(serial, levels = c("120","SerA","SerB","PC","NC","MR")))
+          serial = factor(serial, levels = c("120","SerA","SerB","PC")))
       
       ruggedness_plates <- serial_testing %>%
         {if (input$ruggedness_scope == "ruggedness_only") {
