@@ -172,7 +172,8 @@ ui <- fluidPage(
       
       # Serial testing
       h5(strong(style = "width:100%;", "Upload SerialTesting File (.csv or .xlsx) 
-                with columns columns plateID, serialID, ParmB_ratio, ParmA_ratio, and rp")),
+                with columns columns plateID, serialID, ParmA_ratio, ParmB_ratio, and rp")),
+      p("Make sure the values of serialID contain 120, SerA, SerB, PC in them."),
       fileInput("serialtesting_file", label = NULL, accept = c(".csv", ".xlsx"))),
     
     actionButton("run", "Run Analysis", class = "btn-primary"),
