@@ -173,8 +173,9 @@ ui <- fluidPage(
       # Serial testing
       h5(strong(style = "width:100%;", "Upload SerialTesting File (.csv or .xlsx) 
                 with columns columns plateID, serialID, ParmA_ratio, ParmB_ratio, and rp")),
-      p("Make sure the values of serialID contain 120, SerA, SerB, PC in them."),
-      fileInput("serialtesting_file", label = NULL, accept = c(".csv", ".xlsx"))),
+      p("Analysis requires a 120%, Serial A, Serial B, and Positive Control."),
+      fileInput("serialtesting_file", label = NULL, accept = c(".csv", ".xlsx")),
+      uiOutput("serial_mapping_ui")),
     
     actionButton("run", "Run Analysis", class = "btn-primary"),
     actionButton("clear", "Clear"))),
@@ -231,6 +232,75 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   observeEvent(input$clear, session$reload())
+  
+  # ------------------------------------
+  # User specifies which serial is which
+  # ------------------------------------
+  serial_testing_raw <- reactive({
+    req(input$serialtesting_file)
+    read_uploaded_file(input$serialtesting_file)})
+  
+  serial_mapping_valid <- reactive({
+    req(serial_testing_raw())
+    
+    vals <- c(
+      input$PC_serial,
+      input$SerA_serial,
+      input$SerB_serial,
+      input$`120_serial`)
+    
+    # must all be selected
+    if (any(is.null(vals) | vals == "")) {
+      return(FALSE)}
+    
+    # must be unique
+    length(unique(vals)) == 4})
+  
+  output$serial_mapping_warning <- renderText({
+    req(serial_testing_raw())
+    
+    vals <- c(input$PC_serial, input$SerA_serial, input$SerB_serial, input$`120_serial`)
+    
+    if (any(is.null(vals) | vals == "")) {
+      return("Please select all serial mappings.")}
+    
+    if (length(unique(vals)) != 4) {
+      return("Each selection must be unique (no duplicates).")}})
+  
+  output$serial_mapping_ui <- renderUI({
+    req(serial_testing_raw())
+    serial_choices <- sort(unique(serial_testing_raw()$serialID))
+    
+    tagList(
+      h5(strong(style = "width:100%;", "Select Serial IDs")),
+      
+      selectInput("PC_serial", "Positive Control", choices = serial_choices),
+      selectInput("SerA_serial", "Serial A", choices = serial_choices),
+      selectInput("SerB_serial", "Serial B", choices = serial_choices),
+      selectInput("120_serial", "120%", choices = serial_choices),
+      
+      textOutput("serial_mapping_warning"),
+      br())})
+  
+  serial_testing_mapped <- reactive({
+    req(serial_testing_raw())
+    df <- serial_testing_raw()
+    
+    req(input$PC_serial,
+        input$SerA_serial,
+        input$SerB_serial,
+        input$`120_serial`)
+    
+    df %>%
+      mutate(
+        serial = case_when(
+          serialID == input$`120_serial` ~ "120",
+          serialID == input$SerA_serial  ~ "SerA",
+          serialID == input$SerB_serial  ~ "SerB",
+          serialID == input$PC_serial    ~ "PC",
+          TRUE ~ NA_character_),
+        serial = factor(serial, levels = c("120", "SerA", "SerB", "PC")))})
+  
   
   # -------------------
   # Data 
