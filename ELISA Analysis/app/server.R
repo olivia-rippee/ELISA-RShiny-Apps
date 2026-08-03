@@ -18,36 +18,26 @@ server <- function(input, output, session) {
       req(input$conf_level)
       
       if (input$conf_level < 0.80 || input$conf_level > 0.99) {
-        div(
-          style = "color:red;",
-          "Confidence level must be between 80% and 99%."
-        )
-      }
-    }
-  })
+        div(style = "color:red;",
+          "Confidence level must be between 80% and 99%.")}}})
   
   # Dynamic z-score for CI calculations
   z_score <- reactive({
     req(input$conf_level)
-    qnorm(1 - (1 - input$conf_level) / 2)
-  })
+    qnorm(1 - (1 - input$conf_level) / 2)})
   
   # ------------------------------------
   # User specifies which serial is which
   # ------------------------------------
   serial_testing_raw <- reactive({
     req(input$serialtesting_file)
-    read_uploaded_file(input$serialtesting_file)
-  })
+    read_uploaded_file(input$serialtesting_file)})
   
   serial_mapping_valid <- reactive({
     req(serial_testing_raw())
     
-    vals <- c(
-      input$PC_serial,
-      input$SerA_serial,
-      input$SerB_serial,
-      input$`120_serial`)
+    vals <- c(input$PC_serial, input$SerA_serial,
+      input$SerB_serial, input$`120_serial`)
     
     # must all be selected
     if (any(is.null(vals) | vals == "")) {
@@ -102,14 +92,10 @@ server <- function(input, output, session) {
       
       req(input$od_file)
       
-      out <- c(
-        out,
+      out <- c(out,
         process_uniformity(
           od_file = input$od_file,
-          scope = input$uniformity_scope
-        )
-      )
-    }
+          scope = input$uniformity_scope))}
     
     if ("parallelism" %in% input$analyses) {
       req(
@@ -117,33 +103,22 @@ server <- function(input, output, session) {
         input$dilution_file,
         input$layout_file)
       
-      out <- c(
-        out,
+      out <- c(out,
         process_parallelism(
           serial_testing = input$serialtesting_file,
           dilution = input$dilution_file,
           layout = input$layout_file,
           mapping = mapping,
-          scope = input$parallelism_scope
-        )
-      )
-      
-    }
+          scope = input$parallelism_scope))}
     
     if ("ruggedness" %in% input$analyses) {
       req(input$serialtesting_file)
       
-      out <- c(
-        out,
+      out <- c(out,
         process_ruggedness(
           serial_testing = input$serialtesting_file,
           mapping = mapping,
-          scope = input$ruggedness_scope
-        )
-      )
-      
-    }
-    
+          scope = input$ruggedness_scope))}
     out})
   
   # -------------------------------------------------
@@ -219,29 +194,8 @@ server <- function(input, output, session) {
       if (max_has_time) DTOutput("ruggedness_max_time_table"),
       if (!max_has_temp && !max_has_time) DTOutput("ruggedness_max_table"))})
   
-  uniformity_plots(
-    input,
-    output,
-    session,
-    data_all
-  )
+  uniformity_plots(input, output, session, data_all)
+
+  parallelism_tables(input, output, session, data_all, z_score(), conf_level())
   
-  
-  parallelism_tables(
-    input,
-    output,
-    session,
-    data_all,
-    z_score(),
-    conf_level()
-  )
-  
-  
-  ruggedness_tables(
-    input,
-    output,
-    session,
-    data_all,
-    z_score(),
-    conf_level()
-  )}
+  ruggedness_tables(input, output, session, data_all, z_score(), conf_level())}
