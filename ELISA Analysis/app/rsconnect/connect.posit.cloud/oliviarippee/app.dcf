@@ -1,0 +1,10 @@
+name: app
+title:
+username: oliviarippee
+account: oliviarippee
+server: connect.posit.cloud
+hostUrl: https://api.connect.posit.cloud/v1
+appId: 019fc8bb-98ab-eb65-4ab9-77ad803c1601
+bundleId:
+url: https://connect.posit.cloud/oliviarippee/content/019fc8bb-98ab-eb65-4ab9-77ad803c1601
+version: 1
