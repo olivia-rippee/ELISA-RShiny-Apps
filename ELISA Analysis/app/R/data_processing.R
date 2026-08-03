@@ -157,8 +157,7 @@ process_parallelism <- function(serial_testing, dilution, layout, mapping, scope
   well_mapping <- layout_long %>%
     left_join(
       dilution_long,
-      by = c("plateID", "RowLetter", "Column")
-    ) %>%
+      by = c("plateID", "RowLetter", "Column")) %>%
     map_serials(mapping)
   
   start_dilutions <- well_mapping %>%
@@ -173,7 +172,6 @@ process_parallelism <- function(serial_testing, dilution, layout, mapping, scope
         mutate(dilution_group = paste0(serial, " ", Dilution))
     } else NULL,
     start_dilutions = start_dilutions)}
-
 
 process_ruggedness <- function(serial_testing, mapping, scope) {
   serial_testing <- read_uploaded_file(serial_testing)
