@@ -45,11 +45,11 @@ ui <- fluidPage(
     card(
       min_height = 250,
       card_header("ELISA Analysis"),
-      p("Generate summary statistics for parallelism and ruggedness."),
+      p("Generate summary statistics and visualizations for uniformity, parallelism, and ruggedness."),
       card_footer(
         tags$a(
           "Launch App",
-          href = "https://oliviarippee-elisa-parallelism-ruggedness.share.connect.posit.cloud/",
+          href = "https://oliviarippee-elisa-uniformity-parallelism-ruggedness.share.connect.posit.cloud",
           target = "_blank",
           class = "btn btn-primary w-100"))),
     
