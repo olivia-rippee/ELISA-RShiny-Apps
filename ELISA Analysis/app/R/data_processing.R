@@ -84,6 +84,7 @@ process_uniformity <- function(od_file, scope) {
       Q25 = quantile(OD, 0.25, na.rm = TRUE),
       Median = quantile(OD, 0.50, na.rm = TRUE),
       Q75 = quantile(OD, 0.75, na.rm = TRUE),
+      Mean = mean(OD, na.rm = TRUE),
       CV = cv(OD),
       Inner_CV = cv(inner_wells$OD[inner_wells$plateID == unique(plateID)]),
       Ratio_Max_Min = max(OD) / min(OD) * 100,
@@ -92,19 +93,49 @@ process_uniformity <- function(od_file, scope) {
         min(inner_wells$OD[inner_wells$plateID == unique(plateID)]) * 100,
       .groups = "drop")
   
+  # Inter-assay %CV = CV across the plate means
+  plate_means <- metrics_df %>%
+    group_by(plateID) %>%
+    summarise(
+      plate_mean = mean(OD, na.rm = TRUE),
+      .groups = "drop")
+  
+  inter_assay_CV <- cv(plate_means$plate_mean)
+  
+  # Inter-assay Inner %CV = CV across the inner-well mean for each plate
+  inner_plate_means <- inner_wells %>%
+    group_by(plateID) %>%
+    summarise(
+      inner_plate_mean = mean(OD, na.rm = TRUE),
+      .groups = "drop")
+  
+  inter_assay_inner_CV <- cv(inner_plate_means$inner_plate_mean)
+  
   overall_metrics <- metrics_df %>%
     summarise(
       plateID = "All Plates",
-      Q25 = quantile(OD, 0.25),
-      Median = quantile(OD, 0.50),
-      Q75 = quantile(OD, 0.75),
-      CV = cv(OD),
-      Inner_CV = cv(inner_wells$OD),
-      Ratio_Max_Min = max(OD) / min(OD) * 100,
+      Q25 = quantile(OD, 0.25, na.rm = TRUE),
+      Median = quantile(OD, 0.50, na.rm = TRUE),
+      Q75 = quantile(OD, 0.75, na.rm = TRUE),
+      Mean = mean(OD, na.rm = TRUE),
+      
+      # Overall %CV = inter-assay %CV across plate means
+      CV = inter_assay_CV,
+      
+      # Inner %CV = inter-assay %CV across inner-well
+      # means for each plate
+      Inner_CV = inter_assay_inner_CV,
+      
+      Ratio_Max_Min = max(OD, na.rm = TRUE) /
+        min(OD, na.rm = TRUE) * 100,
+      
       Inner_Ratio_Max_Min =
-        max(inner_wells$OD) / min(inner_wells$OD) * 100)
+        max(inner_wells$OD, na.rm = TRUE) /
+        min(inner_wells$OD, na.rm = TRUE) * 100)
   
-  uniformity_metrics <- bind_rows(uniformity_metrics, overall_metrics)
+  uniformity_metrics <- bind_rows(
+    uniformity_metrics,
+    overall_metrics)
 
   list(
     uniformity_plates = uniformity_plates,
@@ -113,7 +144,6 @@ process_uniformity <- function(od_file, scope) {
     heatmap_avg = heatmap_avg,
     heatmap_all_plates = heatmap_all_plates,
     uniformity_metrics = uniformity_metrics)}
-
 
 process_parallelism <- function(serial_testing, dilution, layout, mapping, scope) {
   
