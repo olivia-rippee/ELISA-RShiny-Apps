@@ -33,17 +33,14 @@ get_layout_values <- function(layout_df, plateid) {
     na.omit()}
 
 check_plate_serials <- function(plateid, layout, serialtesting) {
-  # Identify Layout well columns 1-12
   well_cols <- names(layout)[grepl("^(X)?([1-9]|1[0-2])$", names(layout))]
   
-  # SerialTesting is the source of truth
   serials <- serialtesting %>%
     filter(plateID == plateid) %>%
     pull(serialID) %>%
     unique() %>%
     na.omit()
-  
-  # Get all values from Layout wells 1-12
+
   layout_vals <- layout %>%
     filter(plateID == plateid) %>%
     select(all_of(well_cols)) %>%
@@ -52,13 +49,10 @@ check_plate_serials <- function(plateid, layout, serialtesting) {
     na.omit()
   
   # Check each SerialTesting serialID against Layout
-  tibble(
-    PlateID = plateid,
-    Serial = serials,
+  tibble(PlateID = plateid, Serial = serials,
     Missing_In = sapply(serials, function(s) {
       if (!(s %in% layout_vals)) {"Layout"
-      } else {""}})) %>%
-    filter(Missing_In != "")}
+      } else {""}})) %>% filter(Missing_In != "")}
 
 # -----------------------
 # UI
@@ -69,9 +63,9 @@ ui <- fluidPage(useShinyjs(),
   br(),
   fluidRow(column(4, fileInput("dilution", "Upload Dilution (CSV)")),
            column(4, fileInput("layout", "Upload Layout (CSV)")),
-  fluidRow(column(4, fileInput("od", "Upload OD (CSV)")) ),
-         # column(4, fileInput("plateinfo", "Upload PlateInfo (CSV)")),
-           column(4, fileInput("serialtesting", "Upload SerialTesting (CSV)")) ),
+           column(4, fileInput("od", "Upload OD (CSV)"))),
+  fluidRow(column(4, fileInput("plateinfo", "Upload PlateInfo (CSV)")),
+           column(4, fileInput("serialtesting", "Upload SerialTesting (CSV)"))),
   br(),
   actionButton("run", "Run QA Check", class = "btn-primary"),
   actionButton("clear", "Clear", class = "btn-secondary"),
@@ -94,7 +88,7 @@ server <- function(input, output, session) {
       dilution = if (!is.null(input$dilution)) read_csv(input$dilution$datapath) else NULL,
       layout = if (!is.null(input$layout)) read_csv(input$layout$datapath) else NULL,
       od = if (!is.null(input$od)) read_csv(input$od$datapath) else NULL,
-      # plateinfo = if (!is.null(input$plateinfo)) read_csv(input$plateinfo$datapath) else NULL,
+      plateinfo = if (!is.null(input$plateinfo)) read_csv(input$plateinfo$datapath) else NULL,
       serialtesting = if (!is.null(input$serialtesting)) read_csv(input$serialtesting$datapath) else NULL)
     files_data(files) })
   
@@ -164,7 +158,6 @@ server <- function(input, output, session) {
     
     if (!is.null(files$layout) && !is.null(files$serialtesting)) {
       
-      # SerialTesting is the source of truth
       plate_ids <- unique(files$serialtesting$plateID)
       
       serials_missing <- map_dfr(
@@ -186,29 +179,29 @@ server <- function(input, output, session) {
     output$results_ui <- renderUI({
       tagList(hr(),
         h3("All Plate IDs"),
-        p("List of all plateIDs found in the files."),
+        div(class = "text-muted", "List of all plateIDs found in the files."),
         DTOutput("plateIDs_table"),
         hr(),
         
         h3("Plate IDs Not in Any Other File"),
-        p("List of plate IDs only found in one file (e.g. typos)."),
+        div(class = "text-muted", "List of plate IDs only found in one file (e.g. typos)."),
         if (is.null(mislabels_any_r()) || nrow(mislabels_any_r()) == 0) {
-          HTML("No mismatches found.")
+          div(class = "alert alert-success", "No mismatches found.")
         } else {DTOutput("mislabels_any_table")},
         hr(),
         
         h3("Plate IDs Not in Every File"),
-        p("List of plate IDs that are missing from at least one file (e.g. unfinished entries)."),
+        div(class = "text-muted", "List of plate IDs that are missing from at least one file (e.g. unfinished entries)."),
         if (is.null(mislabels_all_r()) || nrow(mislabels_all_r()) == 0) {
-          HTML("No mismatches found.")
+          div(class = "alert alert-success", "No mismatches found.")
         } else {DTOutput("mislabels_all_table")},
         hr(),
         
         h3("Serial Check"),
-        p("List of serials found in Serial Testing that are not in Layout."),
+        div(class = "text-muted", "List of serials found in Serial Testing that are not in Layout."),
         if (!is.null(serial_mismatch_r()$message)) {
-          HTML(serial_mismatch_r()$message)
-        } else {DTOutput("serial_mismatch_table") } ) })
+          div(class = "alert alert-success", serial_mismatch_r()$message)
+        } else {DTOutput("serial_mismatch_table")})})
     
     
     # Render tables
@@ -225,7 +218,7 @@ server <- function(input, output, session) {
     reset("dilution")
     reset("layout")
     reset("od")
-    # reset("plateinfo")
+    reset("plateinfo")
     reset("serialtesting")
     files_data(list())
     plateIDs_r(NULL)
