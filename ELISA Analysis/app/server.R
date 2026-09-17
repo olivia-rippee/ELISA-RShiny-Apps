@@ -147,6 +147,16 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   output$parallelism_ui <- renderUI({
     req(input$run)
+    
+    df <- data_all()$parallelism
+    
+    # Determine whether SerA or SerB has any real
+    # starting dilution values
+    has_starting_dilutions <- df %>%
+      filter(serial %in% c("SerA", "SerB")) %>%
+      pull(Dilution) %>%
+      { any(!is.na(.)) }
+    
     tagList(
       h2("Parallelism"),
       h3("All Plate IDs"),
@@ -154,12 +164,22 @@ server <- function(input, output, session) {
       hr(),
       h3("Parallelism - All Starting Dilutions"),
       DTOutput("parallelism_all"),
-      br(),
-      h3("Parallelism - Combined Serial A + Serial B"),
-      DTOutput("parallelism_combined"),
-      br(),
-      h3("Parallelism - By Serial and Starting Dilution"),
-      DTOutput("parallelism_by_serial"))})
+      
+      # Only show dilution-specific analyses when starting dilutions were actually detected
+      if (has_starting_dilutions) {
+        tagList(
+          br(),
+          h3("Parallelism - Combined Serial A + Serial B"),
+          DTOutput("parallelism_combined"),
+          br(),
+          h3("Parallelism - By Serial and Starting Dilution"),
+          DTOutput("parallelism_by_serial"))
+      } else {
+        tagList(
+          br(),
+          div(style = "font-style: italic; color: #666;",
+            "No additional starting dilutions detected; ",
+            "dilution-specific parallelism analyses were skipped."))})})
   
   # -------------------------------------------------
   # Ruggedness UI
