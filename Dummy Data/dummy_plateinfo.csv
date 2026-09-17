@@ -1,0 +1,45 @@
+plateID,date,teAB,plate_role
+Plate1_AB_120Min,8/22/2025,AB,Minimum Ruggedness
+Plate2_CD_120Min,8/28/2025,CD,Minimum Ruggedness
+Plate3_CD_BMin,8/28/2025,CD,Minimum Ruggedness
+Plate4_AB_120Min,9/5/2025,AB,Minimum Ruggedness
+Plate5_AB_AParallelism,9/5/2025,AB,Parallelism
+Plate6_CD_120Min,9/9/2025,CD,Minimum Ruggedness
+Plate7_CD_Bmin,9/9/2025,CD,Minimum Ruggedness
+Plate8_AB_AParallelism,9/9/2025,AB,Parallelism
+Plate9_CD_Bmin,9/10/2025,CD,Minimum Ruggedness
+Plate10_AB_AParallelism,9/10/2025,AB,Parallelism
+Plate11_AB_Bparallelism,9/10/2025,AB,Parallelism
+Plate12_AB_Bparallelism,9/11/2025,AB,Parallelism
+Plate13_AB_Bmin,9/12/2025,AB,Minimum Ruggedness
+Plate14_AB_Bparallelism,9/12/2025,AB,Parallelism
+Plate15_CD_Bparallelism,9/12/2025,CD,Parallelism
+Plate16_CD_120Min,9/12/2025,CD,Minimum Ruggedness
+Plate17_CD_Uniformity,9/12/2025,CD,Uniformity
+Plate18_AB_BMin,9/16/2025,AB,Minimum Ruggedness
+Plate19_AB_120Min,9/16/2025,AB,Minimum Ruggedness
+Plate20_CD_Aparallelism,9/16/2025,CD,Parallelism
+Plate21_CD_Bparallelism,9/16/2025,CD,Parallelism
+Plate22_AB_BMin,9/17/2025,AB,Minimum Ruggedness
+Plate23_AB_Uniformity,9/17/2025,AB,Uniformity
+Plate24_CD_Aparallelism,9/17/2025,CD,Parallelism
+Plate25_CD_Bparallelism,9/17/2025,CD,Parallelism
+Plate26_CD_Aparallelism,9/18/2025,CD,Parallelism
+Plate27_CD_Uniformity,9/18/2025,CD,Uniformity
+Plate28_AB_BMaxTime,9/18/2025,AB,Maximum Time Ruggedness
+Plate29_AB_Uniformity,9/18/2025,AB,Uniformity
+Plate30_AB_120MaxTemp,9/23/2025,AB,Maximum Temp Ruggedness
+Plate31_AB_120MaxTemp,9/24/2025,AB,Maximum Temp Ruggedness
+Plate32_CD_BMaxTemp,9/23/2025,CD,Maximum Temp Ruggedness
+Plate33_CD_BMaxTime,9/23/2025,CD,Maximum Time Ruggedness
+Plate34_CD_120MaxTime,9/23/2025,CD,Maximum Time Ruggedness
+Plate35_CD_BMaxTemp,9/24/2025,CD,Maximum Temp Ruggedness
+Plate36_CD_120MaxTemp,9/24/2025,CD,Maximum Temp Ruggedness
+Plate37_CD_120MaxTime,9/24/2025,CD,Maximum Time Ruggedness
+Plate38_CD_BMaxTime,9/24/2025,CD,Maximum Time Ruggedness
+Plate39_CD_120MaxTime,9/25/2025,CD,Maximum Time Ruggedness
+Plate40_CD_BMaxTime,9/25/2025,CD,Maximum Time Ruggedness
+Plate41_CD_120MaxTemp,9/26/2025,CD,Maximum Temp Ruggedness
+Plate42_CD_BMaxTemp,9/26/2025,CD,Maximum Temp Ruggedness
+Plate43_AB_BMaxTime,9/25/2025,AB,Maximum Time Ruggedness
+Plate44_AB_BMaxTemp,9/26/2025,AB,Maximum Temp Ruggedness
