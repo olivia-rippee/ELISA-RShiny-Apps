@@ -88,7 +88,6 @@ server <- function(input, output, session) {
     out <- list()
     
     if ("uniformity" %in% input$analyses) {
-      
       req(input$od_file)
       
       out <- c(out,
@@ -143,12 +142,11 @@ server <- function(input, output, session) {
     req(input$run)
     df <- data_all()$parallelism
     
-    # Determine whether SerA or SerB has any real
-    # starting dilution values
+    # Determine whether SerA or SerB has more than one starting dilution value
     has_starting_dilutions <- df %>%
       filter(serial %in% c("SerA", "SerB")) %>%
-      pull(Dilution) %>%
-      {any(!is.na(.)) }
+      summarise(n = n_distinct(Dilution, na.rm = TRUE)) %>%
+      pull(n) > 1
     
     tagList(
       h2("Parallelism"),
@@ -172,7 +170,7 @@ server <- function(input, output, session) {
           br(),
           div(style = "font-style: italic; color: #666;",
             "No additional starting dilutions detected; ",
-            "dilution-specific parallelism analyses were skipped."))})})
+            "dilution-specific parallelism analyses skipped."))})})
   
   # -------------------------------------------------
   # Ruggedness UI
