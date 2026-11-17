@@ -76,7 +76,6 @@ server <- function(input, output, session) {
   # Data 
   # -------------------
   data_all <- eventReactive(input$run, {
-    
     if (any(input$analyses %in% c("parallelism","ruggedness"))) {
       req(serial_mapping_valid())}
     
@@ -93,15 +92,10 @@ server <- function(input, output, session) {
       req(input$od_file)
       
       out <- c(out,
-        process_uniformity(
-          od_file = input$od_file,
-          scope = input$uniformity_scope))}
+        process_uniformity(od_file = input$od_file, scope = input$uniformity_scope))}
     
     if ("parallelism" %in% input$analyses) {
-      req(
-        input$serialtesting_file,
-        input$dilution_file,
-        input$layout_file)
+      req(input$serialtesting_file, input$dilution_file, input$layout_file)
       
       out <- c(out,
         process_parallelism(
@@ -147,7 +141,6 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   output$parallelism_ui <- renderUI({
     req(input$run)
-    
     df <- data_all()$parallelism
     
     # Determine whether SerA or SerB has any real
@@ -155,7 +148,7 @@ server <- function(input, output, session) {
     has_starting_dilutions <- df %>%
       filter(serial %in% c("SerA", "SerB")) %>%
       pull(Dilution) %>%
-      { any(!is.na(.)) }
+      {any(!is.na(.)) }
     
     tagList(
       h2("Parallelism"),
@@ -216,6 +209,6 @@ server <- function(input, output, session) {
   
   uniformity_plots(input, output, session, data_all)
 
-  parallelism_tables(input, output, session, data_all, z_score(), conf_level())
+  parallelism_tables(input, output, session, data_all, z_score, conf_level)
   
-  ruggedness_tables(input, output, session, data_all, z_score(), conf_level())}
+  ruggedness_tables(input, output, session, data_all, z_score, conf_level)}
