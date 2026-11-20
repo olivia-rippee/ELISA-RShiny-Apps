@@ -163,11 +163,11 @@ server <- function(input, output, session) {
     
     datatable(
       df[,c("AssayLabel", "Step", "Start", "End", "Overlap")],
-      options = list(pageLength = 15, dom = 't', ordering = FALSE),
+      options = list(paging = FALSE, searching = FALSE, ordering = FALSE, scrollX = TRUE),
       rownames = FALSE,
       class = "table table-bordered table-striped table-hover") %>%
       formatStyle("Overlap", target = "row",
-        backgroundColor = styleEqual("⚠️", "#F9D6D5"))})
+                  backgroundColor = styleEqual("⚠️", "#F9D6D5"))})
 
   # Export ICS
   # -----------
